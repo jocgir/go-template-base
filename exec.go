@@ -6,12 +6,13 @@ package template
 
 import (
 	"fmt"
-	"internal/fmtsort"
 	"io"
 	"reflect"
 	"runtime"
 	"strings"
-	"text/template/parse"
+
+	"github.com/jocgir/template/fmtsort"
+	"github.com/jocgir/template/parse"
 )
 
 // maxExecDepth specifies the maximum stack depth of templates within
