@@ -226,12 +226,12 @@ func (t *T) MAdd(a int, b []int) []int {
 	return v
 }
 
-var myError = errors.New("my error")
+var errMyError = errors.New("my error")
 
 // MyError returns a value and an error according to its argument.
 func (t *T) MyError(error bool) (bool, error) {
 	if error {
-		return true, myError
+		return true, errMyError
 	}
 	return false, nil
 }
@@ -291,7 +291,7 @@ var execTests = []execTest{
 	// Fields on maps.
 	{"map .one", "{{.MSI.one}}", "1", tVal, true},
 	{"map .two", "{{.MSI.two}}", "2", tVal, true},
-	{"map .NO", "{{.MSI.NO}}", "<no value>", tVal, true},
+	{"map .NO", "{{.MSI.NO}}", NoValue, tVal, true},
 	{"map .one interface", "{{.MXI.one}}", "1", tVal, true},
 	{"map .WRONG args", "{{.MSI.one 1}}", "", tVal, false},
 	{"map .WRONG type", "{{.MII.one}}", "", tVal, false},
@@ -341,7 +341,7 @@ var execTests = []execTest{
 	{"NIL", "{{.NIL}}", "<nil>", tVal, true},
 
 	// Empty interfaces holding values.
-	{"empty nil", "{{.Empty0}}", "<no value>", tVal, true},
+	{"empty nil", "{{.Empty0}}", NoValue, tVal, true},
 	{"empty with int", "{{.Empty1}}", "3", tVal, true},
 	{"empty with string", "{{.Empty2}}", "empty2", tVal, true},
 	{"empty with slice", "{{.Empty3}}", "[7 8]", tVal, true},
@@ -349,8 +349,8 @@ var execTests = []execTest{
 	{"empty with struct, field", "{{.Empty4.V}}", "UinEmpty", tVal, true},
 
 	// Edge cases with <no value> with an interface value
-	{"field on interface", "{{.foo}}", "<no value>", nil, true},
-	{"field on parenthesized interface", "{{(.).foo}}", "<no value>", nil, true},
+	{"field on interface", "{{.foo}}", NoValue, nil, true},
+	{"field on parenthesized interface", "{{(.).foo}}", NoValue, nil, true},
 
 	// Issue 31810: Parenthesized first element of pipeline with arguments.
 	// See also TestIssue31810.
@@ -868,7 +868,7 @@ func TestExecuteError(t *testing.T) {
 	err = tmpl.Execute(b, tVal)
 	if err == nil {
 		t.Errorf("expected error; got none")
-	} else if !strings.Contains(err.Error(), myError.Error()) {
+	} else if !strings.Contains(err.Error(), errMyError.Error()) {
 		if *debug {
 			fmt.Printf("test execute error: %s\n", err)
 		}
@@ -1244,7 +1244,7 @@ func TestMissingMapKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "99 <no value>"
+	want := fmt.Sprint("99 ", NoValue)
 	got := b.String()
 	if got != want {
 		t.Errorf("got %q; expected %q", got, want)
@@ -1256,7 +1256,6 @@ func TestMissingMapKey(t *testing.T) {
 	if err != nil {
 		t.Fatal("default:", err)
 	}
-	want = "99 <no value>"
 	got = b.String()
 	if got != want {
 		t.Errorf("got %q; expected %q", got, want)
@@ -1302,12 +1301,12 @@ func TestUnterminatedStringError(t *testing.T) {
 
 const alwaysErrorText = "always be failing"
 
-var alwaysError = errors.New(alwaysErrorText)
+var errAlwaysError = errors.New(alwaysErrorText)
 
 type ErrorWriter int
 
 func (e ErrorWriter) Write(p []byte) (int, error) {
-	return 0, alwaysError
+	return 0, errAlwaysError
 }
 
 func TestExecuteGivesExecError(t *testing.T) {

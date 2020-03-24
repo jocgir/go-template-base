@@ -579,7 +579,13 @@ func (s *state) evalFunction(dot reflect.Value, node *parse.IdentifierNode, cmd 
 // evalField evaluates an expression like (.Field) or (.Field arg1 arg2).
 // The 'final' argument represents the return value from the preceding
 // value of the pipeline, if any.
-func (s *state) evalField(dot reflect.Value, fieldName string, node parse.Node, args []parse.Node, final, receiver reflect.Value) reflect.Value {
+func (s *state) evalField(dot reflect.Value, fieldName string, node parse.Node, args []parse.Node, final, receiver reflect.Value) (result reflect.Value) {
+	defer func() {
+		// Give the opportunity to external handlers to resolve the invalid value.
+		context := ErrorContext{Source: FieldError, Result: result, Dot: dot, Name: fieldName, Node: node, Args: args, Final: final, Receiver: receiver}
+		result = s.tryRecoverError(recover(), &context)
+	}()
+
 	if !receiver.IsValid() {
 		if s.tmpl.option.missingKey == mapError { // Treat invalid value as missing map key.
 			s.errorf("nil data; no entry for key %q", fieldName)
@@ -666,7 +672,13 @@ var (
 // evalCall executes a function or method call. If it's a method, fun already has the receiver bound, so
 // it looks just like a function call. The arg list, if non-nil, includes (in the manner of the shell), arg[0]
 // as the function itself.
-func (s *state) evalCall(dot, fun reflect.Value, node parse.Node, name string, args []parse.Node, final reflect.Value) reflect.Value {
+func (s *state) evalCall(dot, fun reflect.Value, node parse.Node, name string, args []parse.Node, final reflect.Value) (result reflect.Value) {
+	defer func() {
+		// Give the opportunity to external handlers to resolve the invalid value.
+		context := ErrorContext{Source: CallError, Function: fun, Result: result, Dot: dot, Name: name, Node: node, Args: args, Final: final}
+		result = s.tryRecoverError(recover(), &context)
+	}()
+
 	if args != nil {
 		args = args[1:] // Zeroth arg is function name/node; not passed to function.
 	}
@@ -971,7 +983,7 @@ func printableValue(v reflect.Value) (interface{}, bool) {
 		v, _ = indirect(v) // fmt.Fprint handles nil.
 	}
 	if !v.IsValid() {
-		return "<no value>", true
+		return NoValue, true
 	}
 
 	if !v.Type().Implements(errorType) && !v.Type().Implements(fmtStringerType) {

@@ -91,7 +91,7 @@ func addFuncs(out, in FuncMap) {
 func goodFunc(typ reflect.Type) bool {
 	// We allow functions with 1 result or 2 results where the second is an error.
 	switch {
-	case typ.NumOut() == 1:
+	case typ.NumOut() == 1 && typ.Out(0) != errorType:
 		return true
 	case typ.NumOut() == 2 && typ.Out(1) == errorType:
 		return true
