@@ -39,7 +39,7 @@ type NodeType int
 // this template was parsed.
 type Pos int
 
-func (p Pos) Position() Pos {
+func (p pos) Position() Pos {
 	return p
 }
 
@@ -49,6 +49,7 @@ func (t NodeType) Type() NodeType {
 	return t
 }
 
+// No need for public comments.
 const (
 	NodeText       NodeType = iota // Plain text.
 	NodeAction                     // A non-control action such as a field evaluation.
@@ -106,7 +107,7 @@ func (l *ListNode) writeTo(sb *strings.Builder) {
 	}
 }
 
-func (l *ListNode) CopyList() *ListNode {
+func (l listNode) CopyList() *ListNode {
 	if l == nil {
 		return l
 	}
@@ -117,7 +118,7 @@ func (l *ListNode) CopyList() *ListNode {
 	return n
 }
 
-func (l *ListNode) Copy() Node {
+func (l listNode) Copy() Node {
 	return l.CopyList()
 }
 
@@ -145,7 +146,7 @@ func (t *TextNode) tree() *Tree {
 	return t.tr
 }
 
-func (t *TextNode) Copy() Node {
+func (t textNode) Copy() Node {
 	return &TextNode{tr: t.tr, NodeType: NodeText, Pos: t.Pos, Text: append([]byte{}, t.Text...)}
 }
 
@@ -196,7 +197,7 @@ func (p *PipeNode) tree() *Tree {
 	return p.tr
 }
 
-func (p *PipeNode) CopyPipe() *PipeNode {
+func (p pipeNode) CopyPipe() *PipeNode {
 	if p == nil {
 		return p
 	}
@@ -212,7 +213,7 @@ func (p *PipeNode) CopyPipe() *PipeNode {
 	return n
 }
 
-func (p *PipeNode) Copy() Node {
+func (p pipeNode) Copy() Node {
 	return p.CopyPipe()
 }
 
@@ -247,9 +248,8 @@ func (a *ActionNode) tree() *Tree {
 	return a.tr
 }
 
-func (a *ActionNode) Copy() Node {
+func (a actionNode) Copy() Node {
 	return a.tr.newAction(a.Pos, a.Line, a.Pipe.CopyPipe())
-
 }
 
 // CommandNode holds a command (a pipeline inside an evaluating action).
@@ -293,7 +293,7 @@ func (c *CommandNode) tree() *Tree {
 	return c.tr
 }
 
-func (c *CommandNode) Copy() Node {
+func (c commandNode) Copy() Node {
 	if c == nil {
 		return c
 	}
@@ -345,11 +345,11 @@ func (i *IdentifierNode) tree() *Tree {
 	return i.tr
 }
 
-func (i *IdentifierNode) Copy() Node {
+func (i identifierNode) Copy() Node {
 	return NewIdentifier(i.Ident).SetTree(i.tr).SetPos(i.Pos)
 }
 
-// AssignNode holds a list of variable names, possibly with chained field
+// VariableNode holds a list of variable names, possibly with chained field
 // accesses. The dollar sign is part of the (first) name.
 type VariableNode struct {
 	NodeType
@@ -381,7 +381,7 @@ func (v *VariableNode) tree() *Tree {
 	return v.tr
 }
 
-func (v *VariableNode) Copy() Node {
+func (v variableNode) Copy() Node {
 	return &VariableNode{tr: v.tr, NodeType: NodeVariable, Pos: v.Pos, Ident: append([]string{}, v.Ident...)}
 }
 
@@ -396,7 +396,7 @@ func (t *Tree) newDot(pos Pos) *DotNode {
 	return &DotNode{tr: t, NodeType: NodeDot, Pos: pos}
 }
 
-func (d *DotNode) Type() NodeType {
+func (d dotNode) Type() NodeType {
 	// Override method on embedded NodeType for API compatibility.
 	// TODO: Not really a problem; could change API without effect but
 	// api tool complains.
@@ -415,7 +415,7 @@ func (d *DotNode) tree() *Tree {
 	return d.tr
 }
 
-func (d *DotNode) Copy() Node {
+func (d dotNode) Copy() Node {
 	return d.tr.newDot(d.Pos)
 }
 
@@ -430,7 +430,7 @@ func (t *Tree) newNil(pos Pos) *NilNode {
 	return &NilNode{tr: t, NodeType: NodeNil, Pos: pos}
 }
 
-func (n *NilNode) Type() NodeType {
+func (n nilNode) Type() NodeType {
 	// Override method on embedded NodeType for API compatibility.
 	// TODO: Not really a problem; could change API without effect but
 	// api tool complains.
@@ -449,7 +449,7 @@ func (n *NilNode) tree() *Tree {
 	return n.tr
 }
 
-func (n *NilNode) Copy() Node {
+func (n nilNode) Copy() Node {
 	return n.tr.newNil(n.Pos)
 }
 
@@ -484,7 +484,7 @@ func (f *FieldNode) tree() *Tree {
 	return f.tr
 }
 
-func (f *FieldNode) Copy() Node {
+func (f fieldNode) Copy() Node {
 	return &FieldNode{tr: f.tr, NodeType: NodeField, Pos: f.Pos, Ident: append([]string{}, f.Ident...)}
 }
 
@@ -539,7 +539,7 @@ func (c *ChainNode) tree() *Tree {
 	return c.tr
 }
 
-func (c *ChainNode) Copy() Node {
+func (c chainNode) Copy() Node {
 	return &ChainNode{tr: c.tr, NodeType: NodeChain, Pos: c.Pos, Node: c.Node, Field: append([]string{}, c.Field...)}
 }
 
@@ -570,7 +570,7 @@ func (b *BoolNode) tree() *Tree {
 	return b.tr
 }
 
-func (b *BoolNode) Copy() Node {
+func (b boolNode) Copy() Node {
 	return b.tr.newBool(b.Pos, b.True)
 }
 
@@ -707,7 +707,7 @@ func (n *NumberNode) tree() *Tree {
 	return n.tr
 }
 
-func (n *NumberNode) Copy() Node {
+func (n numberNode) Copy() Node {
 	nn := new(NumberNode)
 	*nn = *n // Easy, fast, correct.
 	return nn
@@ -738,7 +738,7 @@ func (s *StringNode) tree() *Tree {
 	return s.tr
 }
 
-func (s *StringNode) Copy() Node {
+func (s stringNode) Copy() Node {
 	return s.tr.newString(s.Pos, s.Quoted, s.Text)
 }
 
@@ -848,7 +848,7 @@ func (b *BranchNode) tree() *Tree {
 	return b.tr
 }
 
-func (b *BranchNode) Copy() Node {
+func (b branchNode) Copy() Node {
 	switch b.NodeType {
 	case NodeIf:
 		return b.tr.newIf(b.Pos, b.Line, b.Pipe, b.List, b.ElseList)
@@ -870,7 +870,7 @@ func (t *Tree) newIf(pos Pos, line int, pipe *PipeNode, list, elseList *ListNode
 	return &IfNode{BranchNode{tr: t, NodeType: NodeIf, Pos: pos, Line: line, Pipe: pipe, List: list, ElseList: elseList}}
 }
 
-func (i *IfNode) Copy() Node {
+func (i ifNode) Copy() Node {
 	return i.tr.newIf(i.Pos, i.Line, i.Pipe.CopyPipe(), i.List.CopyList(), i.ElseList.CopyList())
 }
 
@@ -883,7 +883,7 @@ func (t *Tree) newRange(pos Pos, line int, pipe *PipeNode, list, elseList *ListN
 	return &RangeNode{BranchNode{tr: t, NodeType: NodeRange, Pos: pos, Line: line, Pipe: pipe, List: list, ElseList: elseList}}
 }
 
-func (r *RangeNode) Copy() Node {
+func (r rangeNode) Copy() Node {
 	return r.tr.newRange(r.Pos, r.Line, r.Pipe.CopyPipe(), r.List.CopyList(), r.ElseList.CopyList())
 }
 
@@ -896,7 +896,7 @@ func (t *Tree) newWith(pos Pos, line int, pipe *PipeNode, list, elseList *ListNo
 	return &WithNode{BranchNode{tr: t, NodeType: NodeWith, Pos: pos, Line: line, Pipe: pipe, List: list, ElseList: elseList}}
 }
 
-func (w *WithNode) Copy() Node {
+func (w withNode) Copy() Node {
 	return w.tr.newWith(w.Pos, w.Line, w.Pipe.CopyPipe(), w.List.CopyList(), w.ElseList.CopyList())
 }
 
@@ -934,6 +934,6 @@ func (t *TemplateNode) tree() *Tree {
 	return t.tr
 }
 
-func (t *TemplateNode) Copy() Node {
+func (t templateNode) Copy() Node {
 	return t.tr.newTemplate(t.Pos, t.Line, t.Name, t.Pipe.CopyPipe())
 }
