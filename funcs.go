@@ -73,7 +73,11 @@ func addValueFuncs(out map[string]reflect.Value, in FuncMap) {
 			panic("value for " + name + " not a function")
 		}
 		if !goodFunc(v.Type()) {
-			panic(fmt.Errorf("can't install method/function %q with %d results", name, v.Type().NumOut()))
+			if v.Type().NumOut() == 1 {
+				panic(fmt.Errorf("can't install method/function %q with only error as result", name))
+			} else {
+				panic(fmt.Errorf("can't install method/function %q with %d results", name, v.Type().NumOut()))
+			}
 		}
 		out[name] = v
 	}

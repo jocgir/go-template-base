@@ -2,6 +2,7 @@ package template
 
 import (
 	"reflect"
+	"sort"
 )
 
 // ErrorManagers allows registration of error handlers to manage errors.
@@ -11,17 +12,22 @@ func (t *Template) ErrorManagers(name string, managers ...*ErrorManager) *Templa
 	return t
 }
 
-// GetFuncs returns the list of function added to the template.
-func (t *Template) GetFuncs(builtin bool) FuncMap {
-	if builtin {
-		return builtins
-	}
-	return t.parseFuncs
-}
+// GetBuiltins returns the sorted list of builtin functions name added to the template.
+func (t *Template) GetBuiltins() []string { return getSortedName(t.GetBuiltinsMap()) }
+
+// GetBuiltinsMap returns the list of builtin functions added to the template.
+func (t *Template) GetBuiltinsMap() FuncMap { return builtins }
+
+// GetFuncs returns the sorted list of function names added to the template.
+func (t *Template) GetFuncs() []string { return getSortedName(t.GetFuncsMap()) }
+
+// GetFuncsMap returns the list of function added to the template.
+func (t *Template) GetFuncsMap() FuncMap { return t.parseFuncs }
 
 // SafeFuncs allows registering of non standard functions, i.e. functions with no return,
 // or that multiple values.
 func (t *Template) SafeFuncs(funcMap FuncMap) *Template {
+	var replaced FuncMap
 	for name, fn := range funcMap {
 		f := reflect.ValueOf(fn)
 		if f.Kind() != reflect.Func {
@@ -31,10 +37,30 @@ func (t *Template) SafeFuncs(funcMap FuncMap) *Template {
 		if ft.NumOut() == 1 && ft.Out(0) != errorType || ft.NumOut() == 2 && ft.Out(1) == errorType {
 			continue
 		}
-		funcMap[name] = func(in *ErrorContext) (interface{}, error) {
+		if replaced == nil {
+			// We duplicate the supplied func map to not alter the original
+			replaced = make(FuncMap, len(funcMap))
+			for key := range funcMap {
+				replaced[key] = funcMap[key]
+			}
+		}
+		replaced[name] = func(in *ErrorContext) (interface{}, error) {
 			result := in.callActualFunc(f)
 			return result, in.Error()
 		}
 	}
+	if replaced != nil {
+		t.ErrorManagers("_NonStandardOutput", InvalidReturnHandlers()...)
+		return t.Funcs(replaced)
+	}
 	return t.Funcs(funcMap)
+}
+
+func getSortedName(funcs FuncMap) []string {
+	list := make([]string, 0, len(funcs))
+	for name := range funcs {
+		list = append(list, name)
+	}
+	sort.Strings(list)
+	return list
 }
