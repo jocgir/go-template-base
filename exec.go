@@ -582,7 +582,7 @@ func (s *state) evalFunction(dot reflect.Value, node *parse.IdentifierNode, cmd 
 func (s *state) evalField(dot reflect.Value, fieldName string, node parse.Node, args []parse.Node, final, receiver reflect.Value) (result reflect.Value) {
 	defer func() {
 		// Give the opportunity to external handlers to resolve the invalid value.
-		context := ErrorContext{Source: FieldError, Result: result, Dot: dot, Name: fieldName, Node: node, Args: args, Final: final, Receiver: receiver}
+		context := ErrorContext{source: FieldError, result: result, dot: dot, name: fieldName, node: node, args: args, final: final, receiver: receiver}
 		result = s.tryRecoverError(recover(), &context)
 	}()
 
@@ -675,7 +675,7 @@ var (
 func (s *state) evalCall(dot, fun reflect.Value, node parse.Node, name string, args []parse.Node, final reflect.Value) (result reflect.Value) {
 	defer func() {
 		// Give the opportunity to external handlers to resolve the invalid value.
-		context := ErrorContext{Source: CallError, Function: fun, Result: result, Dot: dot, Name: name, Node: node, Args: args, Final: final}
+		context := ErrorContext{source: CallError, fun: fun, result: result, dot: dot, name: name, node: node, args: args, final: final}
 		result = s.tryRecoverError(recover(), &context)
 	}()
 

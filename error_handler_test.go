@@ -10,51 +10,28 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestActionConversion(t *testing.T) {
-	assert.Equal(t, mapInvalid, Invalid.convert())
-	assert.Equal(t, mapZeroValue, ZeroValue.convert())
-	assert.Equal(t, mapError, Error.convert())
-	assert.Equal(t, mapInvalid, (Error + 1).convert())
-	assert.Equal(t, mapInvalid, AllActions.convert())
-	assert.Equal(t, mapInvalid, MissingAction(0).convert())
-
-	assert.Equal(t, Invalid, mapInvalid.convert())
-	assert.Equal(t, ZeroValue, mapZeroValue.convert())
-	assert.Equal(t, Error, mapError.convert())
-	assert.Equal(t, missingKeyAction(0), Invalid.convert())
-	assert.Panics(t, func() { _ = missingKeyAction(3).convert() })
-}
-
 func TestErrorHandling(t *testing.T) {
 	err := fmt.Errorf
 	type results map[MissingAction]interface{}
-	type handlers []*ErrorManager
 
-	defaultHandler := func(context *ErrorContext) (interface{}, ErrorAction) {
-		if context.Name == "default" {
-			context.Err = nil
+	allHandlers := ErrorManagers{
+		NewErrorManager(func(context *ErrorContext) (interface{}, ErrorAction) {
+			context.ClearError()
 			return "Zero", ResultReplaced
-		}
-		return nil, NoReplace
-	}
-
-	privateHandler := func(context *ErrorContext) (interface{}, ErrorAction) {
-		if context.Receiver.Kind() == reflect.Struct && context.Name == "private" {
-			context.Err = nil
-			return "Zero", ResultReplaced
-		}
-		return nil, NoReplace
-	}
-
-	allHandlers := handlers{
-		{defaultHandler, AllErrors, ZeroValue},
-		{privateHandler, FieldError, ZeroValue},
+		}).OnActions(ZeroValue).OnMembers("default"),
+		NewErrorManager(func(context *ErrorContext) (interface{}, ErrorAction) {
+			if context.Receiver().Kind() == reflect.Struct {
+				context.ClearError()
+				return "Zero", ResultReplaced
+			}
+			return nil, NoReplace
+		}).OnActions(ZeroValue).OnSources(FieldError).OnMembers("private"),
 	}
 	tests := []struct {
 		name, input string
 		data        interface{}
 		result      interface{}
-		handlers    handlers
+		handlers    ErrorManagers
 		wanted      results
 		funcs       FuncMap
 	}{
@@ -164,105 +141,105 @@ func TestErrorHandling(t *testing.T) {
 			name:     "Calling method with no return",
 			input:    "{{.NoReturn}}",
 			data:     &dataWithMethod{},
-			handlers: handlers{InvalidReturnHandler()},
+			handlers: InvalidReturnHandlers(),
 			result:   "",
 		},
 		{
 			name:     "Calling variadic method with no return",
 			input:    "{{.VariadicNoReturn 0 1}}",
 			data:     &dataWithMethod{},
-			handlers: handlers{InvalidReturnHandler()},
+			handlers: InvalidReturnHandlers(),
 			result:   "",
 		},
 		{
 			name:     "Calling error method",
 			input:    "{{.Error}}",
 			data:     &dataWithMethod{},
-			handlers: handlers{InvalidReturnHandler()},
+			handlers: InvalidReturnHandlers(),
 			result:   err(`template: t:1:2: executing "t" at <.Error>: bang`),
 		},
 		{
 			name:     "Calling method with 2 return values",
 			input:    "{{.Tuple}}",
 			data:     &dataWithMethod{},
-			handlers: handlers{InvalidReturnHandler()},
+			handlers: InvalidReturnHandlers(),
 			result:   "[2 two]",
 		},
 		{
 			name:     "Calling method with 3 return values and no error",
 			input:    "{{.Tuple4 ``}}",
 			data:     &dataWithMethod{},
-			handlers: handlers{InvalidReturnHandler()},
+			handlers: InvalidReturnHandlers(),
 			result:   "[4 four true]",
 		},
 		{
 			name:     "Calling method with 3 return values and error",
 			input:    `{{.Tuple4 "bang"}}`,
 			data:     &dataWithMethod{},
-			handlers: handlers{InvalidReturnHandler()},
+			handlers: InvalidReturnHandlers(),
 			result:   err(`template: t:1:10: executing "t" at <"bang">: bang`),
 		},
 		// Testing functions
 		{
 			name:     "Calling function with only error as return",
 			input:    `{{error}}`,
-			handlers: handlers{InvalidReturnHandler()},
+			handlers: InvalidReturnHandlers(),
 			result:   err(`template: t:1:2: executing "t" at <error>: boom`),
 			funcs:    FuncMap{"error": func() error { return fmt.Errorf("boom") }},
 		},
 		{
 			name:     "Calling function with no return",
 			input:    `{{noReturn}}`,
-			handlers: handlers{InvalidReturnHandler()},
+			handlers: InvalidReturnHandlers(),
 			result:   "",
 			funcs:    FuncMap{"noReturn": func() {}},
 		},
 		{
 			name:     "Calling function with no return (and undesired argument)",
 			input:    `{{noReturn 0}}`,
-			handlers: handlers{InvalidReturnHandler()},
+			handlers: InvalidReturnHandlers(),
 			result:   err(`template: t:1:11: executing "t" at <0>: wrong number of args for noReturn: want 0 got 1`),
 			funcs:    FuncMap{"noReturn": func() {}},
 		},
 		{
 			name:     "Calling function with no return (and undesired arguments)",
 			input:    `{{noReturn 0 1}}`,
-			handlers: handlers{InvalidReturnHandler()},
+			handlers: InvalidReturnHandlers(),
 			result:   err(`template: t:1:2: executing "t" at <noReturn>: wrong number of args for noReturn: want 0 got 2`),
 			funcs:    FuncMap{"noReturn": func() {}},
 		},
 		{
 			name:     "Calling variadic function with no return with argument",
 			input:    `{{noReturn 0}}`,
-			handlers: handlers{InvalidReturnHandler()},
+			handlers: InvalidReturnHandlers(),
 			result:   "",
 			funcs:    FuncMap{"noReturn": func(...int) {}},
 		},
 		{
 			name:     "Calling variadic function with no return with arguments",
 			input:    `{{noReturn 0 1}}`,
-			handlers: handlers{InvalidReturnHandler()},
+			handlers: InvalidReturnHandlers(),
 			result:   "",
 			funcs:    FuncMap{"noReturn": func(...int) {}},
 		},
 		{
 			name:     "Calling variadic function with no return and bad arguments",
 			input:    `{{noReturn 0 1}}`,
-			handlers: handlers{InvalidReturnHandler()},
+			handlers: InvalidReturnHandlers(),
 			result:   err(`template: t:1:11: executing "t" at <0>: expected string; found 0`),
 			funcs:    FuncMap{"noReturn": func(string, ...int) {}},
 		},
 		{
 			name:     "Calling variadic function with no return and bad arguments2",
 			input:    `{{noReturn 0 "1"}}`,
-			handlers: handlers{InvalidReturnHandler()},
+			handlers: InvalidReturnHandlers(),
 			result:   err(`template: t:1:13: executing "t" at <"1">: expected integer; found "1"`),
 			funcs:    FuncMap{"noReturn": func(...int) {}},
 		},
 		{
 			name:     "Calling function with 2 returns",
 			input:    `{{two}}`,
-			handlers: handlers{InvalidReturnHandler()},
+			handlers: InvalidReturnHandlers(),
 			result:   "[0 zero]",
 			funcs:    FuncMap{"two": func() (int, string) { return 0, "zero" }},
 		},
@@ -270,24 +247,21 @@ func TestErrorHandling(t *testing.T) {
 		{
 			name:  "Testing array",
 			input: `{{$v := repeat "test" 5}}{{$v.value}}{{$v.Append ".txt"}}`,
-			handlers: handlers{
-				&ErrorManager{
+			handlers: ErrorManagers{
+				NewErrorManager(
 					func(context *ErrorContext) (interface{}, ErrorAction) {
-						if strings.Contains(context.Err.Error(), `can't evaluate field value in type []template.dataWithMethod`) {
-							context.Err = nil
-							return context.Receiver.Interface(), ResultAsArray
-						}
-						if strings.Contains(context.Err.Error(), `can't evaluate field Append in type []template.dataWithMethod`) {
-							context.Err = nil
-							return context.Receiver.Interface(), ResultAsArray
-						}
-						if strings.Contains(context.Err.Error(), `value is an unexported field of struct type template.dataWithMethod`) {
-							context.Err = nil
-							return context.Receiver.Interface().(dataWithMethod).value, ResultReplaced
-						}
-						return nil, NoReplace
-					}, AllErrors, Invalid,
-				},
+						context.ClearError()
+						return context.Receiver().Interface(), ResultAsArray
+					},
+					`can't evaluate field (value|Append) in type \[\]template.dataWithMethod`,
+				).OnActions(Invalid),
+				NewErrorManager(
+					func(context *ErrorContext) (interface{}, ErrorAction) {
+						context.ClearError()
+						return context.Receiver().Interface().(dataWithMethod).value, ResultReplaced
+					},
+					`value is an unexported field of struct type template.dataWithMethod`,
+				).OnActions(Invalid),
 			},
 			funcs: FuncMap{
 				"repeat": func(s string, count int) []dataWithMethod {
@@ -301,7 +275,7 @@ func TestErrorHandling(t *testing.T) {
 			result: err(`template: t:1:29: executing "t" at <$v.value>: can't evaluate field value in type []template.dataWithMethod`),
 			wanted: results{Invalid: "[test1 test2 test3 test4 test5][test1.txt test2.txt test3.txt test4.txt test5.txt]"}},
 	}
-	var filter string // = "Calling function with only error as return"
+	var filter string //= "Calling method with 2 return values"
 	for _, tc := range tests {
 		if filter != "" && filter != tc.name {
 			continue
