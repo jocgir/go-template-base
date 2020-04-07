@@ -580,11 +580,10 @@ func (s *state) evalFunction(dot reflect.Value, node *parse.IdentifierNode, cmd 
 // The 'final' argument represents the return value from the preceding
 // value of the pipeline, if any.
 func (s *state) evalField(dot reflect.Value, fieldName string, node parse.Node, args []parse.Node, final, receiver reflect.Value) (result reflect.Value) {
-	defer func() {
-		// Give the opportunity to external handlers to resolve the invalid value.
-		context := ErrorContext{source: FieldError, result: result, dot: dot, name: fieldName, node: node, args: args, final: final, receiver: receiver}
-		result = s.tryRecoverError(recover(), &context)
-	}()
+	// Give the opportunity to external handlers to resolve invalid values.
+	defer s.recover(func(err error) error {
+		return s.result(Field, err, fieldName, node, args, nilv, dot, final, receiver, &result)
+	})
 
 	if !receiver.IsValid() {
 		if s.tmpl.option.missingKey == mapError { // Treat invalid value as missing map key.
@@ -673,11 +672,10 @@ var (
 // it looks just like a function call. The arg list, if non-nil, includes (in the manner of the shell), arg[0]
 // as the function itself.
 func (s *state) evalCall(dot, fun reflect.Value, node parse.Node, name string, args []parse.Node, final reflect.Value) (result reflect.Value) {
-	defer func() {
-		// Give the opportunity to external handlers to resolve the invalid value.
-		context := ErrorContext{source: CallError, fun: fun, result: result, dot: dot, name: name, node: node, args: args, final: final}
-		result = s.tryRecoverError(recover(), &context)
-	}()
+	// Give the opportunity to external handlers to resolve invalid value.
+	defer s.recover(func(err error) error {
+		return s.result(Call, err, name, node, args, fun, dot, final, nilv, &result)
+	})
 
 	if args != nil {
 		args = args[1:] // Zeroth arg is function name/node; not passed to function.
@@ -969,6 +967,10 @@ func (s *state) printValue(n parse.Node, v reflect.Value) {
 	iface, ok := printableValue(v)
 	if !ok {
 		s.errorf("can't print %s of type %s", n, v.Type())
+	}
+	// Give the opportunity to external handlers to change the output.
+	if _, ok := iface.(fmt.Stringer); !ok {
+		iface = s.format(Print, n, iface)
 	}
 	_, err := fmt.Fprint(s.wr, iface)
 	if err != nil {

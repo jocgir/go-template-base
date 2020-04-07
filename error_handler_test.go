@@ -15,17 +15,14 @@ func TestErrorHandling(t *testing.T) {
 	type results map[MissingAction]interface{}
 
 	allHandlers := ErrorManagers{
-		NewErrorManager(func(context *ErrorContext) (interface{}, ErrorAction) {
+		NewErrorManager(func(context *Context) (interface{}, ErrorAction) {
 			context.ClearError()
 			return "Zero", ResultReplaced
 		}).OnActions(ZeroValue).OnMembers("default"),
-		NewErrorManager(func(context *ErrorContext) (interface{}, ErrorAction) {
-			if context.Receiver().Kind() == reflect.Struct {
-				context.ClearError()
-				return "Zero", ResultReplaced
-			}
-			return nil, NoReplace
-		}).OnActions(ZeroValue).OnSources(FieldError).OnMembers("private"),
+		NewErrorManager(func(context *Context) (interface{}, ErrorAction) {
+			context.ClearError()
+			return "Zero", ResultReplaced
+		}).OnActions(ZeroValue).OnSources(Field).OnMembers("private").OnKinds(reflect.Struct),
 	}
 	tests := []struct {
 		name, input string
@@ -179,6 +176,13 @@ func TestErrorHandling(t *testing.T) {
 			handlers: InvalidReturnHandlers(),
 			result:   err(`template: t:1:10: executing "t" at <"bang">: bang`),
 		},
+		{
+			name:     "Calling method with 3 return values and piped error",
+			input:    `{{"boom!" | .Tuple4}}`,
+			data:     &dataWithMethod{},
+			handlers: InvalidReturnHandlers(),
+			result:   err(`template: t:1:12: executing "t" at <.Tuple4>: boom!`),
+		},
 		// Testing functions
 		{
 			name:   "Calling function with only error as return",
@@ -190,6 +194,12 @@ func TestErrorHandling(t *testing.T) {
 			name:   "Calling function with no return",
 			input:  `{{noReturn}}`,
 			result: "",
+			funcs:  FuncMap{"noReturn": func() {}},
+		},
+		{
+			name:   "Calling function with no return (and undesired pipe)",
+			input:  `{{123|noReturn}}`,
+			result: err(`template: t:1:6: executing "t" at <noReturn>: wrong number of args for noReturn: want 0 got 1`),
 			funcs:  FuncMap{"noReturn": func() {}},
 		},
 		{
@@ -234,20 +244,41 @@ func TestErrorHandling(t *testing.T) {
 			result: "[0 zero]",
 			funcs:  FuncMap{"two": func() (int, string) { return 0, "zero" }},
 		},
+		{
+			name:   "Calling method on constants",
+			input:  `{{("Hello world!").Upper}}{{(12).Double}}`,
+			result: "HELLO WORLD!24",
+			handlers: ErrorManagers{
+				NewErrorManager(
+					func(context *Context) (interface{}, ErrorAction) {
+						context.ClearError()
+						return strings.ToUpper(context.Receiver().Interface().(string)), ResultReplaced
+					},
+					`can't evaluate field Upper in type string`,
+				),
+				NewErrorManager(
+					func(context *Context) (interface{}, ErrorAction) {
+						context.ClearError()
+						return context.Receiver().Int() * 2, ResultReplaced
+					},
+					`can't evaluate field Double in type int`,
+				),
+			},
+		},
 		// Multiple values
 		{
 			name:  "Testing array",
 			input: `{{$v := repeat "test" 5}}{{$v.value}}{{$v.Append ".txt"}}`,
 			handlers: ErrorManagers{
 				NewErrorManager(
-					func(context *ErrorContext) (interface{}, ErrorAction) {
+					func(context *Context) (interface{}, ErrorAction) {
 						context.ClearError()
 						return context.Receiver().Interface(), ResultAsArray
 					},
 					`can't evaluate field (value|Append) in type \[\]template.dataWithMethod`,
 				).OnActions(Invalid),
 				NewErrorManager(
-					func(context *ErrorContext) (interface{}, ErrorAction) {
+					func(context *Context) (interface{}, ErrorAction) {
 						context.ClearError()
 						return context.Receiver().Interface().(dataWithMethod).value, ResultReplaced
 					},
@@ -266,13 +297,16 @@ func TestErrorHandling(t *testing.T) {
 			result: err(`template: t:1:29: executing "t" at <$v.value>: can't evaluate field value in type []template.dataWithMethod`),
 			wanted: results{Invalid: "[test1 test2 test3 test4 test5][test1.txt test2.txt test3.txt test4.txt test5.txt]"}},
 	}
-	var filter string // = "Calling function with only error as return"
+
+	// Set the filter to match only desired test
+	var filter string //= "Calling_function_with_no_return_(and_undesired_argument):Invalid"
+
 	for _, tc := range tests {
-		if filter != "" && filter != tc.name {
-			continue
-		}
 		for _, option := range []MissingAction{Invalid, ZeroValue, Error} {
 			t.Run(fmt.Sprintf("%s:%s", tc.name, option), func(t *testing.T) {
+				if filter != "" && !strings.Contains(t.Name(), filter) {
+					return
+				}
 				tmpl, err := New("t").ErrorManagers(tc.name, tc.handlers...).SafeFuncs(tc.funcs).Parse(tc.input)
 				if err != nil {
 					t.Fatalf("parse error: %s", err)

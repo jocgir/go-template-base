@@ -1,32 +1,71 @@
 package template
 
-import "reflect"
+import (
+	"fmt"
+	"reflect"
 
-func (s *state) tryRecoverError(rec interface{}, ec *ErrorContext) reflect.Value {
-	if len(s.tmpl.option.ehs.keys) > 0 {
-		if rec == nil && ec.result.IsValid() && ec.result.CanInterface() && ec.result.Interface() != nil {
-			return ec.result
-		}
-		ec.state = s
-		ec.err, _ = rec.(error)
-		if result, action := ec.invoke(); action != NoReplace {
-			if ec.err != nil {
-				s.errorf(ec.err.Error())
-			}
-			switch action {
-			case ResultReplaced:
-				return result
-			case ResultAsArray:
-				newResult := make([]interface{}, result.Len())
-				for i := 0; i < result.Len(); i++ {
-					newResult[i] = s.evalField(ec.dot, ec.name, ec.node, ec.args, ec.final, result.Index(i)).Interface()
-				}
-				return reflect.ValueOf(newResult)
-			}
-		}
+	"github.com/jocgir/template/parse"
+)
+
+func (s *state) recover(f func(error) error) {
+	var err error
+	switch rec := recover().(type) {
+	case error:
+		err = rec
+	case nil:
+		err = nil
+	default:
+		err = fmt.Errorf("Panic %v", rec)
 	}
-	if rec != nil {
-		panic(rec)
+	switch err := f(err).(type) {
+	case nil:
+	case ExecError:
+		panic(err)
+	default:
+		s.errorf(err.Error())
 	}
-	return ec.result
+}
+
+func (s *state) newContext(source ContextSource, err error, name string, node parse.Node, args []parse.Node,
+	fun, dot, final, receiver reflect.Value, result *reflect.Value) context {
+	return &Context{
+		source:   source,
+		state:    s,
+		err:      err,
+		name:     name,
+		node:     node,
+		args:     args,
+		result:   result,
+		fun:      fun,
+		dot:      dot,
+		final:    final,
+		receiver: receiver,
+	}
+}
+
+func (s *state) result(source ContextSource, err error, name string, node parse.Node, args []parse.Node,
+	fun, dot, final, receiver reflect.Value, result *reflect.Value) error {
+	if !s.hasHandlers() || err == nil && isValid(*result) {
+		return err
+	}
+	return s.newContext(source, err, name, node, args, fun, dot, final, receiver, result).tryRecover()
+}
+
+func (s *state) format(source ContextSource, node parse.Node, iface interface{}) interface{} {
+	if s.hasHandlers() {
+		result := reflect.ValueOf(iface)
+		if err := s.newContext(source, nil, "", node, nil, nilv, nilv, nilv, result, &result).tryRecover(); err != nil {
+			s.errorf(err.Error())
+		}
+		return result.Interface()
+	}
+	return iface
+}
+
+func (s *state) hasHandlers() bool {
+	return len(s.tmpl.option.ehs.handlers) > 0
+}
+
+func isValid(value reflect.Value) bool {
+	return value.IsValid() && value.CanInterface() && value.Interface() != nil
 }

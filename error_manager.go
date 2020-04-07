@@ -1,6 +1,7 @@
 package template
 
 import (
+	"reflect"
 	"regexp"
 )
 
@@ -15,14 +16,15 @@ func NewErrorManager(handler ErrorHandler, filters ...string) *ErrorManager {
 // ErrorManager represents a pre-packaged ErrorHandler function.
 type ErrorManager struct {
 	fun     ErrorHandler
-	source  ErrorSource
+	source  ContextSource
 	mode    MissingAction
 	members []string
 	filters []*regexp.Regexp
+	kinds   []reflect.Kind
 }
 
 // OnSources indicates the error source handled by this manager.
-func (em *ErrorManager) OnSources(sources ...ErrorSource) *ErrorManager {
+func (em *ErrorManager) OnSources(sources ...ContextSource) *ErrorManager {
 	for _, source := range sources {
 		em.source |= source
 	}
@@ -48,30 +50,45 @@ func (em *ErrorManager) Filters(filters ...string) *ErrorManager {
 
 // OnMembers indicates the faulty members handled by this manager.
 func (em *ErrorManager) OnMembers(members ...string) *ErrorManager {
-	for _, member := range members {
-		em.members = append(em.members, member)
-	}
+	em.members = append(em.members, members...)
+	return em
+}
+
+// OnKinds indicates the faulty receiver kind handled by this manager.
+func (em *ErrorManager) OnKinds(kinds ...reflect.Kind) *ErrorManager {
+	em.kinds = append(em.kinds, kinds...)
 	return em
 }
 
 // CanManage returns true if the error manager can handle the kind of error.
-func (em *ErrorManager) CanManage(ec *ErrorContext) bool {
-	mode := ec.option().missingKey.convert()
-	if em.source != 0 && ec.source&em.source == 0 || em.mode != 0 && mode&em.mode == 0 {
+func (em *ErrorManager) CanManage(context *Context) bool {
+	mode := context.option().missingKey.convert()
+	if em.source != 0 && context.Source()&em.source == 0 || em.mode != 0 && mode&em.mode == 0 {
 		return false
 	}
 	if len(em.members) > 0 {
 		match := false
 		for i := 0; !match && i < len(em.members); i++ {
-			match = em.members[i] == ec.name
+			match = em.members[i] == context.MemberName()
 		}
 		if !match {
 			return false
 		}
 	}
-	for _, re := range em.filters {
-		if re.MatchString(ec.err.Error()) {
-			return true
+	if len(em.kinds) > 0 {
+		match := false
+		for i := 0; !match && i < len(em.kinds); i++ {
+			match = em.kinds[i] == context.Receiver().Kind()
+		}
+		if !match {
+			return false
+		}
+	}
+	if context.Error() != nil {
+		for _, re := range em.filters {
+			if re.MatchString(context.ErrorText()) {
+				return true
+			}
 		}
 	}
 	return len(em.filters) == 0

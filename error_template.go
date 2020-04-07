@@ -44,7 +44,7 @@ func (t *Template) SafeFuncs(funcMap FuncMap) *Template {
 				replaced[key] = funcMap[key]
 			}
 		}
-		replaced[name] = func(in *ErrorContext) (interface{}, error) {
+		replaced[name] = func(in *Context) (interface{}, error) {
 			result := in.callActualFunc(f)
 			return result, in.Error()
 		}

@@ -2,9 +2,12 @@ package template
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
+
+	"github.com/divan/num2words"
 )
 
 func ExampleTemplate_GetFuncs_default() {
@@ -120,10 +123,54 @@ func ExampleTemplate_SafeFuncs() {
 	fmt.Println(err, buffer)
 
 	// Output:
-	// empty = func(*template.ErrorContext) (interface {}, error)
-	// error = func(*template.ErrorContext) (interface {}, error)
-	// multiple = func(*template.ErrorContext) (interface {}, error)
+	// empty = func(*template.Context) (interface {}, error)
+	// error = func(*template.Context) (interface {}, error)
+	// multiple = func(*template.Context) (interface {}, error)
 	// <nil> Empty value: ""
 	// <nil> Multiple: "[0 Zero]"
 	// template: test:1:10: executing "test" at <error>: bang Error: "
+}
+
+func ExampleTemplate_ErrorManagers() {
+	t, err := New("test").
+		// We register new functions to return a number, a list and a map
+		SafeFuncs(
+			FuncMap{
+				"number": func() int { return 1234 },
+				"list":   func() (int, string) { return 0, "Zero" },
+				"map":    func() map[string]interface{} { return map[string]interface{}{"hello": "world"} },
+			}).
+
+		// We register an error manager to convert render list into json (map should not be affected)
+		ErrorManagers("List as json", NewErrorManager(func(context *Context) (interface{}, ErrorAction) {
+			result, err := json.MarshalIndent(context.Result().Interface(), "", "  ")
+			if err != nil {
+				context.SetError(err)
+			}
+			return string(result), ResultReplaced
+		}).OnSources(Print).OnKinds(reflect.Array, reflect.Slice)).
+
+		// Weird example, but we also convert integer value into its english representation
+		// using github.com/divan/num2words package
+		ErrorManagers("Number as text", NewErrorManager(func(context *Context) (interface{}, ErrorAction) {
+			value := context.Result().Int()
+			return num2words.ConvertAnd(int(value)), ResultReplaced
+		}).OnSources(Print).OnKinds(reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64)).
+
+		// Here is the template text to process
+		Parse("Number = {{number}}\nList = {{list}}\nMap = {{map}}")
+	if err != nil {
+		panic(err)
+	}
+
+	buffer := new(bytes.Buffer)
+	t.Execute(buffer, nil)
+	fmt.Println(buffer)
+	// Output:
+	// Number = one thousand two hundred and thirty-four
+	// List = [
+	//   0,
+	//   "Zero"
+	// ]
+	// Map = map[hello:world]
 }
