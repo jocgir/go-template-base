@@ -3,6 +3,7 @@ package template
 import (
 	"fmt"
 	"reflect"
+	"regexp"
 
 	"github.com/jocgir/template/parse"
 )
@@ -17,6 +18,7 @@ type Context struct {
 	args                      []parse.Node
 	fun, dot, final, receiver reflect.Value
 	result                    *reflect.Value
+	matches                   map[string]string
 }
 
 var nilv = reflect.Value{}
@@ -34,16 +36,35 @@ func (c context) Final() reflect.Value                      { return c.final }
 func (c context) Function() reflect.Type                    { return c.fun.Type() }
 func (c context) MemberName() string                        { return c.name }
 func (c context) Node() parse.Node                          { return c.node }
+func (c context) StackLen() int                             { return len(c.state.stack) }
+func (c context) StackPeek(n int) *StackCall                { return c.state.peekStack(n) }
 func (c context) Receiver() reflect.Value                   { return c.receiver }
 func (c context) Result() *reflect.Value                    { return c.result }
 func (c context) SetError(err error)                        { c.err = err }
 func (c context) SetResult(value reflect.Value)             { *c.result = value }
 func (c context) Source() ContextSource                     { return c.source }
 func (c context) Template() *Template                       { return c.state.tmpl }
+func (c context) Match(name interface{}) string             { return c.matches[fmt.Sprint(name)] }
 
 func (c context) ehs() errorHandlers { return c.option().ehs }
 func (c context) keys() []string     { return c.ehs().keys }
 func (c context) option() option     { return c.Template().option }
+
+func (c context) match(re *regexp.Regexp) bool {
+	matches := re.FindStringSubmatch(c.ErrorText())
+	if len(matches) == 0 {
+		return false
+	}
+	c.matches = make(map[string]string, len(matches))
+	subexp := re.SubexpNames()
+	for i, match := range matches {
+		c.matches[fmt.Sprint(i)] = match
+		if subexp[i] != "" {
+			c.matches[subexp[i]] = match
+		}
+	}
+	return true
+}
 
 func (c context) ArgCount() int {
 	if c.Final() != missingVal {

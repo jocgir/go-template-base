@@ -33,3 +33,16 @@ func InvalidReturnHandlers() ErrorManagers {
 			OnSources(Call),
 	}
 }
+
+func callFailHandler() *ErrorManager {
+	return NewErrorManager(
+		func(context *Context) (interface{}, ErrorAction) {
+			if context.StackLen() > 1 && context.StackPeek(1).Name == "trap" {
+				context.ClearError()
+				return context.Match("error"), ResultReplaced
+			}
+			return nil, NoReplace
+		},
+		`error calling (.*): (?P<error>.*)`,
+	).OnSources(Call)
+}

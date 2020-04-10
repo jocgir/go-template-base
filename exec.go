@@ -34,9 +34,10 @@ func initMaxExecDepth() int {
 type state struct {
 	tmpl  *Template
 	wr    io.Writer
-	node  parse.Node // current node, for errors
-	vars  []variable // push-down stack of variable values.
-	depth int        // the height of the stack of executing templates.
+	node  parse.Node   // current node, for errors
+	vars  []variable   // push-down stack of variable values.
+	depth int          // the height of the stack of executing templates.
+	stack []*StackCall // stack of functions call
 }
 
 // variable holds the dynamic value of a variable such as $, $x etc.
@@ -672,15 +673,20 @@ var (
 // it looks just like a function call. The arg list, if non-nil, includes (in the manner of the shell), arg[0]
 // as the function itself.
 func (s *state) evalCall(dot, fun reflect.Value, node parse.Node, name string, args []parse.Node, final reflect.Value) (result reflect.Value) {
+	if args != nil {
+		args = args[1:] // Zeroth arg is function name/node; not passed to function.
+	}
+	typ := fun.Type()
+
+	// Register the current caller
+	s.pushStack(name, typ)
+	defer s.popStack()
+
 	// Give the opportunity to external handlers to resolve invalid value.
 	defer s.recover(func(err error) error {
 		return s.result(Call, err, name, node, args, fun, dot, final, nilv, &result)
 	})
 
-	if args != nil {
-		args = args[1:] // Zeroth arg is function name/node; not passed to function.
-	}
-	typ := fun.Type()
 	numIn := len(args)
 	if final != missingVal {
 		numIn++

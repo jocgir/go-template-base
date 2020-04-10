@@ -49,6 +49,13 @@ func (t *Template) SafeFuncs(funcMap FuncMap) *Template {
 			return result, in.Error()
 		}
 	}
+
+	// We register the trap function to handle errors
+	t.ErrorManagers("_FailHandler", callFailHandler())
+	t.Funcs(FuncMap{
+		"trap": func(result interface{}) interface{} { return result },
+	})
+
 	if replaced != nil {
 		t.ErrorManagers("_NonStandardOutput", InvalidReturnHandlers()...)
 		return t.Funcs(replaced)

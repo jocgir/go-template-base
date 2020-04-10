@@ -7,6 +7,12 @@ import (
 	"github.com/jocgir/template/parse"
 )
 
+// StackCall returns information about a stack element.
+type StackCall struct {
+	Name     string
+	Function reflect.Type
+}
+
 func (s *state) recover(f func(error) error) {
 	var err error
 	switch rec := recover().(type) {
@@ -62,8 +68,18 @@ func (s *state) format(source ContextSource, node parse.Node, iface interface{})
 	return iface
 }
 
-func (s *state) hasHandlers() bool {
-	return len(s.tmpl.option.ehs.handlers) > 0
+func (s *state) hasHandlers() bool          { return len(s.tmpl.option.ehs.handlers) > 0 }
+func (s *state) peekStack(n int) *StackCall { return s.stack[len(s.stack)-n-1] }
+
+func (s *state) pushStack(name string, fun reflect.Type) {
+	s.stack = append(s.stack, &StackCall{name, fun})
+}
+
+func (s *state) popStack() (result *StackCall) {
+	last := len(s.stack) - 1
+	result = s.stack[last]
+	s.stack = s.stack[:last]
+	return
 }
 
 func isValid(value reflect.Value) bool {

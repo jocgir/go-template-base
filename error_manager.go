@@ -86,7 +86,7 @@ func (em *ErrorManager) CanManage(context *Context) bool {
 	}
 	if context.Error() != nil {
 		for _, re := range em.filters {
-			if re.MatchString(context.ErrorText()) {
+			if context.match(re) {
 				return true
 			}
 		}

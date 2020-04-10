@@ -275,7 +275,7 @@ func TestErrorHandling(t *testing.T) {
 						context.ClearError()
 						return context.Receiver().Interface(), ResultAsArray
 					},
-					`can't evaluate field (value|Append) in type \[\]template.dataWithMethod`,
+					`can't evaluate field (?:value|Append) in type \[\]template.dataWithMethod`,
 				).OnActions(Invalid),
 				NewErrorManager(
 					func(context *Context) (interface{}, ErrorAction) {
@@ -296,10 +296,18 @@ func TestErrorHandling(t *testing.T) {
 			},
 			result: err(`template: t:1:29: executing "t" at <$v.value>: can't evaluate field value in type []template.dataWithMethod`),
 			wanted: results{Invalid: "[test1 test2 test3 test4 test5][test1.txt test2.txt test3.txt test4.txt test5.txt]"}},
+		// Trap error
+		{
+			name:   "Trap error",
+			input:  `{{with trap fail}}Error: {{.}}{{end}}`,
+			result: `Error: boom!`,
+			funcs:  FuncMap{"fail": func() int { panic("boom!") }},
+		},
 	}
 
 	// Set the filter to match only desired test
-	var filter string //= "Calling_function_with_no_return_(and_undesired_argument):Invalid"
+	var filter string
+	// filter = ""
 
 	for _, tc := range tests {
 		for _, option := range []MissingAction{Invalid, ZeroValue, Error} {
