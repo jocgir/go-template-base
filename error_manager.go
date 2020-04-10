@@ -5,6 +5,12 @@ import (
 	"regexp"
 )
 
+// ErrorHandler represents the function type used to try to recover missing key during the template evaluation.
+type ErrorHandler func(context *Context) (interface{}, ErrorAction)
+
+// NoValue is the rendered string representation of invalid value if missingkey is set to invalid or left to default.
+const NoValue = "<no value>"
+
 // ErrorManagers represents a list of ErrorManager.
 type ErrorManagers []*ErrorManager
 

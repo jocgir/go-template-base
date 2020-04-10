@@ -23,32 +23,37 @@ type Context struct {
 
 var nilv = reflect.Value{}
 
+// Map represent a generic map with strings as keys.
+type Map map[string]interface{}
+
 type context = *Context
 
 func (c context) Args() []parse.Node                        { return c.args }
-func (c context) Call(args []reflect.Value) []reflect.Value { return c.fun.Call(args) }
+func (c context) Call(fun interface{}) interface{}          { return c.callInternal(fun, false) }
 func (c context) ClearError()                               { c.SetError(nil) }
 func (c context) Dot() reflect.Value                        { return c.dot }
 func (c context) Error() error                              { return c.err }
 func (c context) Errorf(format string, args ...interface{}) { c.SetError(fmt.Errorf(format, args...)) }
 func (c context) ErrorText() string                         { return c.err.Error() }
 func (c context) Final() reflect.Value                      { return c.final }
-func (c context) Function() reflect.Type                    { return c.fun.Type() }
+func (c context) Function() reflect.Value                   { return c.fun }
+func (c context) Global() reflect.Value                     { return c.state.vars[0].value }
+func (c context) Match(name interface{}) string             { return c.matches[fmt.Sprint(name)] }
 func (c context) MemberName() string                        { return c.name }
 func (c context) Node() parse.Node                          { return c.node }
-func (c context) StackLen() int                             { return len(c.state.stack) }
-func (c context) StackPeek(n int) *StackCall                { return c.state.peekStack(n) }
 func (c context) Receiver() reflect.Value                   { return c.receiver }
 func (c context) Result() *reflect.Value                    { return c.result }
 func (c context) SetError(err error)                        { c.err = err }
 func (c context) SetResult(value reflect.Value)             { *c.result = value }
 func (c context) Source() ContextSource                     { return c.source }
+func (c context) StackLen() int                             { return len(c.state.stack) }
+func (c context) StackPeek(n int) *StackCall                { return c.state.peekStack(n) }
 func (c context) Template() *Template                       { return c.state.tmpl }
-func (c context) Match(name interface{}) string             { return c.matches[fmt.Sprint(name)] }
+func (c context) Variables() Map                            { return c.state.variables() }
 
-func (c context) ehs() errorHandlers { return c.option().ehs }
-func (c context) keys() []string     { return c.ehs().keys }
-func (c context) option() option     { return c.Template().option }
+func (c context) option() option               { return c.Template().option }
+func (c context) key(key string) ErrorManagers { return c.option().errorHandlers.managers[key] }
+func (c context) keys() []string               { return c.option().errorHandlers.keys }
 
 func (c context) match(re *regexp.Regexp) bool {
 	matches := re.FindStringSubmatch(c.ErrorText())
@@ -73,31 +78,43 @@ func (c context) ArgCount() int {
 	return len(c.Args())
 }
 
-func (c context) tryRecoverNonStandardReturn() (interface{}, bool) {
-	if ft := c.Function(); ft.NumIn() == 1 && ft.In(0) == reflect.TypeOf(c) {
-		return c.convertResult(c.Call([]reflect.Value{reflect.ValueOf(c)})), true
+func (c context) callInternal(function interface{}, injectSelf bool) interface{} {
+	var actualFunc reflect.Value
+	switch ft := function.(type) {
+	case nil:
+		actualFunc = c.fun
+	case reflect.Value:
+		actualFunc = ft
+	default:
+		actualFunc = reflect.ValueOf(function)
 	}
-	return nil, false
-}
 
-func (c context) callActualFunc(fun reflect.Value) interface{} {
-	args := make([]reflect.Value, 0, c.ArgCount())
-	typ := fun.Type()
+	args := make([]reflect.Value, 0, c.ArgCount()+1)
+	first := 0
+	if injectSelf {
+		first = 1
+		args = append(args, reflect.ValueOf(c))
+	}
+	typ := actualFunc.Type()
 	numIn := typ.NumIn()
+
+	if injectSelf && typ.NumIn() == 1 && !typ.IsVariadic() {
+		return c.convertResult(actualFunc.Call(args))
+	}
 
 	if typ.IsVariadic() {
 		numIn--
-	} else if c.ArgCount() != typ.NumIn() {
-		c.Errorf("wrong number of args for %s: want %d got %d", c.MemberName(), typ.NumIn(), c.ArgCount())
+	} else if c.ArgCount()+first != typ.NumIn() {
+		c.Errorf("wrong number of args for %s: want %d got %d", c.MemberName(), typ.NumIn()-first, c.ArgCount())
 		return nil
 	}
 
 	var argType reflect.Type
 	for i := 0; i < c.ArgCount(); i++ {
-		if i <= numIn {
-			argType = typ.In(i)
+		if i+first <= numIn {
+			argType = typ.In(i + first)
 		}
-		if typ.IsVariadic() && i == numIn {
+		if typ.IsVariadic() && i+first == numIn {
 			argType = argType.Elem()
 		}
 		var arg reflect.Value
@@ -108,7 +125,7 @@ func (c context) callActualFunc(fun reflect.Value) interface{} {
 		}
 		args = append(args, arg)
 	}
-	return c.convertResult(fun.Call(args))
+	return c.convertResult(actualFunc.Call(args))
 }
 
 func (c context) convertResult(result []reflect.Value) interface{} {
@@ -134,19 +151,22 @@ func (c context) convertResult(result []reflect.Value) interface{} {
 }
 
 func (c context) tryRecover() error {
-	action := func() ErrorAction {
+	action := func() (result ErrorAction) {
 		for _, key := range c.keys() {
-			for _, handler := range c.ehs().handlers[key] {
+			for _, handler := range c.key(key) {
 				if !handler.CanManage(c) {
 					continue
 				}
 				if value, action := handler.fun(c); action != NoReplace {
 					c.SetResult(reflect.ValueOf(value))
-					return action
+					result = action
+					if c.Error() == nil {
+						return
+					}
 				}
 			}
 		}
-		return NoReplace
+		return
 	}()
 
 	if action == ResultAsArray {

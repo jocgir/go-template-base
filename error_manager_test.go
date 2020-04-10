@@ -11,6 +11,7 @@ import (
 )
 
 func TestErrorHandling(t *testing.T) {
+	t.Parallel()
 	err := fmt.Errorf
 	type results map[MissingAction]interface{}
 
@@ -43,13 +44,13 @@ func TestErrorHandling(t *testing.T) {
 		{
 			name:   "Nil variable",
 			input:  "{{.map.missing}}",
-			data:   map[string]interface{}{"map": nil},
+			data:   Map{"map": nil},
 			result: err(`template: t:1:6: executing "t" at <.map.missing>: nil pointer evaluating interface {}.missing`),
 		},
 		{
 			name:   "Missing interface{}",
 			input:  "{{.map.missing}}",
-			data:   map[string]interface{}{"map": map[string]interface{}{}},
+			data:   Map{"map": Map{}},
 			result: NoValue,
 			wanted: results{
 				Error: err(`template: t:1:6: executing "t" at <.map.missing>: map has no entry for key "missing"`),
@@ -58,7 +59,7 @@ func TestErrorHandling(t *testing.T) {
 		{
 			name:  "Missing string",
 			input: "{{.map.empty}}",
-			data:  map[string]interface{}{"map": map[string]string{}},
+			data:  Map{"map": map[string]string{}},
 			wanted: results{
 				Invalid:   NoValue,
 				Error:     err(`template: t:1:6: executing "t" at <.map.empty>: map has no entry for key "empty"`),
@@ -68,7 +69,7 @@ func TestErrorHandling(t *testing.T) {
 		{
 			name:  "Missing int",
 			input: "{{.map.zero}}",
-			data:  map[string]interface{}{"map": map[string]int{}},
+			data:  Map{"map": map[string]int{}},
 			wanted: results{
 				Invalid:   NoValue,
 				Error:     err(`template: t:1:6: executing "t" at <.map.zero>: map has no entry for key "zero"`),
@@ -78,7 +79,7 @@ func TestErrorHandling(t *testing.T) {
 		{
 			name:  "Missing bool",
 			input: "{{.map.bool}}",
-			data:  map[string]interface{}{"map": map[string]bool{}},
+			data:  Map{"map": map[string]bool{}},
 			wanted: results{
 				Invalid:   NoValue,
 				Error:     err(`template: t:1:6: executing "t" at <.map.bool>: map has no entry for key "bool"`),
@@ -88,7 +89,7 @@ func TestErrorHandling(t *testing.T) {
 		{
 			name:     "Missing key with handler",
 			input:    "{{.map.default}}",
-			data:     map[string]interface{}{"map": map[string]interface{}{}},
+			data:     Map{"map": Map{}},
 			handlers: allHandlers,
 			wanted: results{
 				Invalid:   NoValue,
@@ -135,53 +136,46 @@ func TestErrorHandling(t *testing.T) {
 			result:   err(`template: t:1:2: executing "t" at <.Lower>: wrong number of args for Lower: want 0 got 1`),
 		},
 		{
-			name:     "Calling method with no return",
-			input:    "{{.NoReturn}}",
-			data:     &dataWithMethod{},
-			handlers: InvalidReturnHandlers(),
-			result:   "",
+			name:   "Calling method with no return",
+			input:  "{{.NoReturn}}",
+			data:   &dataWithMethod{},
+			result: "",
 		},
 		{
-			name:     "Calling variadic method with no return",
-			input:    "{{.VariadicNoReturn 0 1}}",
-			data:     &dataWithMethod{},
-			handlers: InvalidReturnHandlers(),
-			result:   "",
+			name:   "Calling variadic method with no return",
+			input:  "{{.VariadicNoReturn 0 1}}",
+			data:   &dataWithMethod{},
+			result: "",
 		},
 		{
-			name:     "Calling error method",
-			input:    "{{.Error}}",
-			data:     &dataWithMethod{},
-			handlers: InvalidReturnHandlers(),
-			result:   err(`template: t:1:2: executing "t" at <.Error>: bang`),
+			name:   "Calling error method",
+			input:  "{{.Error}}",
+			data:   &dataWithMethod{},
+			result: err(`template: t:1:2: executing "t" at <.Error>: bang`),
 		},
 		{
-			name:     "Calling method with 2 return values",
-			input:    "{{.Tuple}}",
-			data:     &dataWithMethod{},
-			handlers: InvalidReturnHandlers(),
-			result:   "[2 two]",
+			name:   "Calling method with 2 return values",
+			input:  "{{.Tuple}}",
+			data:   &dataWithMethod{},
+			result: "[2 two]",
 		},
 		{
-			name:     "Calling method with 3 return values and no error",
-			input:    "{{.Tuple4 ``}}",
-			data:     &dataWithMethod{},
-			handlers: InvalidReturnHandlers(),
-			result:   "[4 four true]",
+			name:   "Calling method with 3 return values and no error",
+			input:  "{{.Tuple4 ``}}",
+			data:   &dataWithMethod{},
+			result: "[4 four true]",
 		},
 		{
-			name:     "Calling method with 3 return values and error",
-			input:    `{{.Tuple4 "bang"}}`,
-			data:     &dataWithMethod{},
-			handlers: InvalidReturnHandlers(),
-			result:   err(`template: t:1:10: executing "t" at <"bang">: bang`),
+			name:   "Calling method with 3 return values and error",
+			input:  `{{.Tuple4 "bang"}}`,
+			data:   &dataWithMethod{},
+			result: err(`template: t:1:10: executing "t" at <"bang">: bang`),
 		},
 		{
-			name:     "Calling method with 3 return values and piped error",
-			input:    `{{"boom!" | .Tuple4}}`,
-			data:     &dataWithMethod{},
-			handlers: InvalidReturnHandlers(),
-			result:   err(`template: t:1:12: executing "t" at <.Tuple4>: boom!`),
+			name:   "Calling method with 3 return values and piped error",
+			input:  `{{"boom!" | .Tuple4}}`,
+			data:   &dataWithMethod{},
+			result: err(`template: t:1:12: executing "t" at <.Tuple4>: boom!`),
 		},
 		// Testing functions
 		{
@@ -296,26 +290,33 @@ func TestErrorHandling(t *testing.T) {
 			},
 			result: err(`template: t:1:29: executing "t" at <$v.value>: can't evaluate field value in type []template.dataWithMethod`),
 			wanted: results{Invalid: "[test1 test2 test3 test4 test5][test1.txt test2.txt test3.txt test4.txt test5.txt]"}},
-		// Trap error
+		// Test trap error function
 		{
 			name:   "Trap error",
 			input:  `{{with trap fail}}Error: {{.}}{{end}}`,
 			result: `Error: boom!`,
 			funcs:  FuncMap{"fail": func() int { panic("boom!") }},
 		},
+		// Test eval function
+		{
+			name:   "Eval function",
+			data:   Map{"somebody": "world"},
+			input:  `{{$hello:="Hello"}}{{eval "{{$hello}} {{.somebody}}"}}!`,
+			result: `Hello world!`,
+		},
 	}
 
 	// Set the filter to match only desired test
 	var filter string
-	// filter = ""
 
 	for _, tc := range tests {
 		for _, option := range []MissingAction{Invalid, ZeroValue, Error} {
 			t.Run(fmt.Sprintf("%s:%s", tc.name, option), func(t *testing.T) {
+				t.Parallel()
 				if filter != "" && !strings.Contains(t.Name(), filter) {
 					return
 				}
-				tmpl, err := New("t").ErrorManagers(tc.name, tc.handlers...).SafeFuncs(tc.funcs).Parse(tc.input)
+				tmpl, err := New("t").ErrorManagers(tc.name, tc.handlers...).ExtraFuncs(tc.funcs).Parse(tc.input)
 				if err != nil {
 					t.Fatalf("parse error: %s", err)
 				}
