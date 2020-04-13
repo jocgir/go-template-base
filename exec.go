@@ -34,9 +34,10 @@ func initMaxExecDepth() int {
 type state struct {
 	tmpl  *Template
 	wr    io.Writer
-	node  parse.Node   // current node, for errors
-	vars  []variable   // push-down stack of variable values.
-	depth int          // the height of the stack of executing templates.
+	node  parse.Node // current node, for errors
+	vars  []variable // push-down stack of variable values.
+	depth int        // the height of the stack of executing templates.
+
 	stack []*StackCall // stack of functions call
 }
 
@@ -583,7 +584,7 @@ func (s *state) evalFunction(dot reflect.Value, node *parse.IdentifierNode, cmd 
 func (s *state) evalField(dot reflect.Value, fieldName string, node parse.Node, args []parse.Node, final, receiver reflect.Value) (result reflect.Value) {
 	// Give the opportunity to external handlers to resolve invalid values.
 	defer s.recover(func(err error) error {
-		return s.result(Field, err, fieldName, node, args, nilv, dot, final, receiver, &result)
+		return s.result(FieldError, err, fieldName, node, args, nilv, dot, final, receiver, &result)
 	})
 
 	if !receiver.IsValid() {
@@ -684,8 +685,12 @@ func (s *state) evalCall(dot, fun reflect.Value, node parse.Node, name string, a
 
 	// Give the opportunity to external handlers to resolve invalid value.
 	defer s.recover(func(err error) error {
-		return s.result(Call, err, name, node, args, fun, dot, final, nilv, &result)
+		return s.result(CallError, err, name, node, args, fun, dot, final, nilv, &result)
 	})
+	if typ.NumIn() == 1 && typ.In(0) == contextType {
+		s.invokeWithContext(name, node, args, fun, dot, final, nilv, &result)
+		return
+	}
 
 	numIn := len(args)
 	if final != missingVal {

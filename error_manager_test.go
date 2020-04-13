@@ -23,7 +23,7 @@ func TestErrorHandling(t *testing.T) {
 		NewErrorManager(func(context *Context) (interface{}, ErrorAction) {
 			context.ClearError()
 			return "Zero", ResultReplaced
-		}).OnActions(ZeroValue).OnSources(Field).OnMembers("private").OnKinds(reflect.Struct),
+		}).OnActions(ZeroValue).OnSources(FieldError).OnMembers("private").OnKinds(reflect.Struct),
 	}
 	tests := []struct {
 		name, input string

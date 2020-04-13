@@ -18,8 +18,7 @@ const (
 )
 
 type option struct {
-	missingKey    missingKeyAction
-	errorHandlers errorHandlers
+	missingKey missingKeyAction
 }
 
 // Option sets options for the template. Options are described by

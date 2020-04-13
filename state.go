@@ -14,15 +14,7 @@ type StackCall struct {
 }
 
 func (s *state) recover(f func(error) error) {
-	var err error
-	switch rec := recover().(type) {
-	case error:
-		err = rec
-	case nil:
-		err = nil
-	default:
-		err = fmt.Errorf("Panic %v", rec)
-	}
+	var err = asError(recover())
 	switch err := f(err).(type) {
 	case nil:
 	case ExecError:
@@ -57,6 +49,13 @@ func (s *state) result(source ContextSource, err error, name string, node parse.
 	return s.newContext(source, err, name, node, args, fun, dot, final, receiver, result).tryRecover()
 }
 
+func (s *state) invokeWithContext(name string, node parse.Node, args []parse.Node,
+	fun, dot, final, receiver reflect.Value, result *reflect.Value) {
+	context := s.newContext(CallContext, nil, name, node, args, fun, dot, final, receiver, result)
+	defer s.recover(func(err error) error { return context.Error() })
+	*result = reflect.ValueOf(context.callInternal(nil, true))
+}
+
 func (s *state) format(source ContextSource, node parse.Node, iface interface{}) interface{} {
 	if s.hasErrorManagers() {
 		result := reflect.ValueOf(iface)
@@ -68,7 +67,7 @@ func (s *state) format(source ContextSource, node parse.Node, iface interface{})
 	return iface
 }
 
-func (s *state) hasErrorManagers() bool     { return len(s.tmpl.option.errorHandlers.managers) > 0 }
+func (s *state) hasErrorManagers() bool     { return len(s.tmpl.errorHandlers.managers) > 0 }
 func (s *state) peekStack(n int) *StackCall { return s.stack[len(s.stack)-n-1] }
 
 func (s *state) variables() Map {
@@ -92,4 +91,15 @@ func (s *state) popStack() (result *StackCall) {
 
 func isValid(value reflect.Value) bool {
 	return value.IsValid() && value.CanInterface() && value.Interface() != nil
+}
+
+func asError(err interface{}) error {
+	switch err := err.(type) {
+	case error:
+		return err
+	case nil:
+		return nil
+	default:
+		return fmt.Errorf("Panic %v", err)
+	}
 }

@@ -21,6 +21,8 @@ type common struct {
 	muFuncs    sync.RWMutex // protects parseFuncs and execFuncs
 	parseFuncs FuncMap
 	execFuncs  map[string]reflect.Value
+
+	errorHandlers errorHandlers
 }
 
 // Template is the representation of a parsed template. The *parse.Tree
@@ -105,6 +107,9 @@ func (t *Template) Clone() (*Template, error) {
 	}
 	for k, v := range t.execFuncs {
 		nt.execFuncs[k] = v
+	}
+	for k, v := range t.errorHandlers.managers {
+		nt.ErrorManagers(k, v...)
 	}
 	return nt, nil
 }

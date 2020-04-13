@@ -21,12 +21,16 @@ type Context struct {
 	matches                   map[string]string
 }
 
-var nilv = reflect.Value{}
+var (
+	nilv        = reflect.Value{}
+	contextType = reflect.TypeOf(&Context{})
+)
 
-// Map represent a generic map with strings as keys.
-type Map map[string]interface{}
-
-type context = *Context
+type (
+	// Map represent a generic map with strings as keys.
+	Map     map[string]interface{}
+	context = *Context
+)
 
 func (c context) Args() []parse.Node                        { return c.args }
 func (c context) Call(fun interface{}) interface{}          { return c.callInternal(fun, false) }
@@ -40,6 +44,7 @@ func (c context) Function() reflect.Value                   { return c.fun }
 func (c context) Global() reflect.Value                     { return c.state.vars[0].value }
 func (c context) Match(name interface{}) string             { return c.matches[fmt.Sprint(name)] }
 func (c context) MemberName() string                        { return c.name }
+func (c context) Mode() MissingAction                       { return c.state.tmpl.option.missingKey.convert() }
 func (c context) Node() parse.Node                          { return c.node }
 func (c context) Receiver() reflect.Value                   { return c.receiver }
 func (c context) Result() *reflect.Value                    { return c.result }
@@ -51,9 +56,9 @@ func (c context) StackPeek(n int) *StackCall                { return c.state.pee
 func (c context) Template() *Template                       { return c.state.tmpl }
 func (c context) Variables() Map                            { return c.state.variables() }
 
-func (c context) option() option               { return c.Template().option }
-func (c context) key(key string) ErrorManagers { return c.option().errorHandlers.managers[key] }
-func (c context) keys() []string               { return c.option().errorHandlers.keys }
+func (c context) handlers() errorHandlers      { return c.Template().errorHandlers }
+func (c context) key(key string) ErrorManagers { return c.handlers().managers[key] }
+func (c context) keys() []string               { return c.handlers().keys }
 
 func (c context) match(re *regexp.Regexp) bool {
 	matches := re.FindStringSubmatch(c.ErrorText())
@@ -69,6 +74,18 @@ func (c context) match(re *regexp.Regexp) bool {
 		}
 	}
 	return true
+}
+
+func (c context) EvalArgs() []interface{} {
+	result := make([]interface{}, 0, len(c.Args())+1)
+	t := reflect.TypeOf(result).Elem()
+	for _, arg := range c.Args() {
+		result = append(result, c.state.evalArg(c.Dot(), t, arg).Interface())
+	}
+	if c.Final() != missingVal {
+		result = append(result, c.Final().Interface())
+	}
+	return result
 }
 
 func (c context) ArgCount() int {

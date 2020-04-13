@@ -6,12 +6,16 @@ import "strings"
 type ContextSource byte
 
 const (
-	// Field indicates that the context has been created while evaluating field.
-	Field ContextSource = 1 << iota
-	// Call indicates that the context has been created while evaluating function call.
-	Call
+	// FieldError indicates that the context has been created while evaluating field.
+	FieldError ContextSource = 1 << iota
+	// CallContext indicates that the context has been created while evaluating function call requiring *Context argument.
+	CallContext
+	// CallError indicates that the context has been created on error while evaluating function call.
+	CallError
 	// Print indicates that the context has been created while evaluating object without String() method.
 	Print
+	// Call indicates that the context has been created while evaluating function call (context or error).
+	Call = CallContext | CallError
 )
 
 func (s ContextSource) String() string {
@@ -19,11 +23,11 @@ func (s ContextSource) String() string {
 	if s == 0 {
 		return "None"
 	}
-	if s&Field != 0 {
-		result = append(result, "Field")
+	if s&FieldError != 0 {
+		result = append(result, "FieldError")
 	}
-	if s&Call != 0 {
-		result = append(result, "Call")
+	if s&CallError != 0 {
+		result = append(result, "CallError")
 	}
 	if s&Print != 0 {
 		result = append(result, "Print")

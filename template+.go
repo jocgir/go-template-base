@@ -8,20 +8,20 @@ import (
 // ErrorManagers allows registration of error handlers to manage errors.
 // An error handler is a packaged error handler function with preset filters for mode and source.
 func (t *Template) ErrorManagers(name string, managers ...*ErrorManager) *Template {
-	if t.option.errorHandlers.managers == nil {
-		t.option.errorHandlers.managers = make(map[string]ErrorManagers)
+	if t.errorHandlers.managers == nil {
+		t.errorHandlers.managers = make(map[string]ErrorManagers)
 	}
 	if len(managers) == 0 {
-		delete(t.option.errorHandlers.managers, name)
+		delete(t.errorHandlers.managers, name)
 	} else {
-		t.option.errorHandlers.managers[name] = managers
+		t.errorHandlers.managers[name] = managers
 	}
 
-	t.option.errorHandlers.keys = make([]string, 0, len(t.option.errorHandlers.managers))
-	for key := range t.option.errorHandlers.managers {
-		t.option.errorHandlers.keys = append(t.option.errorHandlers.keys, key)
+	t.errorHandlers.keys = make([]string, 0, len(t.errorHandlers.managers))
+	for key := range t.errorHandlers.managers {
+		t.errorHandlers.keys = append(t.errorHandlers.keys, key)
 	}
-	sort.Strings(t.option.errorHandlers.keys)
+	sort.Strings(t.errorHandlers.keys)
 	return t
 }
 
@@ -106,9 +106,15 @@ func contextHandlers() ErrorManagers {
 				return context.Call(nil), ResultReplaced
 			},
 			`can't call method/function "(?P<function>.*)" with (?P<result>\d+) result`).
-			OnSources(Call),
+			OnSources(CallError),
 		NewErrorManager(
-			func(context *Context) (interface{}, ErrorAction) {
+			func(context *Context) (result interface{}, action ErrorAction) {
+				defer func() {
+					if err := asError(recover()); err != nil {
+						context.SetError(err)
+						action = ResultReplaced
+					}
+				}()
 				if ft := context.Function().Type(); ft.NumIn() > 0 && ft.In(0) == reflect.TypeOf(context) {
 					return context.callInternal(nil, true), ResultReplaced
 				}
@@ -117,7 +123,7 @@ func contextHandlers() ErrorManagers {
 			`wrong number of args for (?P<function>.*): want (?P<want>\d+) got (?P<got>\d+)`,
 			`can't handle .* for arg of type \*template\.Context`,
 			`wrong type for value; expected \*template.Context; got .*`).
-			OnSources(Call),
+			OnSources(CallError),
 	}
 }
 
@@ -130,9 +136,9 @@ func callFailHandler() *ErrorManager {
 			}
 			return nil, NoReplace
 		},
-		`error calling (?P<function>.*): (?P<error>.*)`,
-		`(?P<error>.*)`,
-	).OnSources(Call)
+		"executing \"(?P<template>.*)\" at <(?P<function>.*)>: (?P<error>.*)",
+		`(?P<error>.+)`,
+	).OnSources(CallError)
 }
 
 type errorHandlers struct {

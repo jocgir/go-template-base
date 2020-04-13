@@ -50,9 +50,7 @@ import (
 // ...
 ```
 
-## Why using that implementation instead of the original
-
-So, what are the benefits of this implementation?
+## What's different in this implementation
 
 ### Handling non standard return functions
 
@@ -60,12 +58,19 @@ The original library will fail if you try to register custom functions that have
 
 ```go
 t := template.New("test").Funcs(template.FuncMap{
-    "empty":    func() { ... },                            // Will raise: can't install method/function "empty" with 0 results
-    "multiple": func() (int, string) { return 0, "Zero" }, // Will raise: can't install method/function "multiple" with 2 results
+    // Will raise: can't install method/function "empty" with 0 results
+    "empty": func() { ... },
 })
 ```
 
-Using this implementation will handle these exceptions:
+```go
+t := template.New("test").Funcs(template.FuncMap{
+    // Will raise: can't install method/function "multiple" with 2 results
+    "multiple": func() (int, string) { return 0, "Zero" }, results
+})
+```
+
+But using this ExtraFuncs to register functions will handle these exceptions:
 
 ```go
 t := template.New("test").ExtraFuncs(template.FuncMap{
@@ -75,4 +80,21 @@ t := template.New("test").ExtraFuncs(template.FuncMap{
 ```
 
 One problem with the original library is that non-compliant custom functions are detected at registration,
-but calling non-compliant methods fail at runtime as you can see in that [example](https://github.com/jocgir/template).
+but calling non-compliant methods fail at runtime as you can see in that [example](https://pkg.go.dev/github.com/jocgir/template?tab=doc#example-Template.ExtraFuncs-Functions).
+
+### Custom error handling functions
+
+When an error occurs while executing a template, there is no way to recuperate on that error. However, it could be useful
+to have a mechanism to dynamically fix the error and continue the processing.
+
+So we added the `ErrorManagers` method to template. With this method, it is possible to provide custom error management
+functions and also specify filters to determine when this function should be invoked.
+
+```go
+    errorHandlerFunc := func(context *template.Context) (interface{}, ErrorAction) {
+        return fmt.Sprintf("ErrorHandled %v", context.Error()), template.ResultReplaced
+    }
+
+    handler := template.NewErrorManager(errorHandlerFunc).OnSources(template.Call)
+    t := template.New("managed").ErrorManagers("name", template.NewErrorManager())
+```
