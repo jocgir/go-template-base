@@ -21,7 +21,7 @@ type option struct {
 	missingKey missingKeyAction
 }
 
-// Option sets options for the template. Options are described by
+// OptionDeprecated sets options for the template. Options are described by
 // strings, either a simple string or "key=value". There can be at
 // most one equals sign in an option string. If the option string
 // is unrecognized or otherwise invalid, Option panics.
@@ -39,7 +39,7 @@ type option struct {
 //	"missingkey=error"
 //		Execution stops immediately with an error.
 //
-func (t *Template) Option(opt ...string) *Template {
+func (t *Template) OptionDeprecated(opt ...string) *Template {
 	t.init()
 	for _, s := range opt {
 		t.setOption(s)

@@ -199,7 +199,7 @@ func TestErrorHandling(t *testing.T) {
 		{
 			name:   "Calling function with no return (and undesired argument)",
 			input:  `{{noReturn 0}}`,
-			result: err(`template: t:1:11: executing "t" at <0>: wrong number of args for noReturn: want 0 got 1`),
+			result: err(`template: t:1:2: executing "t" at <noReturn>: wrong number of args for noReturn: want 0 got 1`),
 			funcs:  FuncMap{"noReturn": func() {}},
 		},
 		{
@@ -309,19 +309,23 @@ func TestErrorHandling(t *testing.T) {
 	// Set the filter to match only desired test
 	var filter string
 
-	for _, tc := range tests {
-		for _, option := range []MissingAction{Invalid, ZeroValue, Error} {
+	for i := range tests {
+		for _, o := range []MissingAction{Default, ZeroValue, Error} {
+			tc, option := tests[i], o
 			t.Run(fmt.Sprintf("%s:%s", tc.name, option), func(t *testing.T) {
 				t.Parallel()
 				if filter != "" && !strings.Contains(t.Name(), filter) {
 					return
 				}
-				tmpl, err := New("t").ErrorManagers(tc.name, tc.handlers...).ExtraFuncs(tc.funcs).Parse(tc.input)
+				tmpl, err := New("t").
+					ErrorManagers(tc.name, tc.handlers...).
+					ExtraFuncs(tc.funcs).
+					Option(option, AllOptions).
+					Parse(tc.input)
 				if err != nil {
 					t.Fatalf("parse error: %s", err)
 				}
 
-				tmpl.option.missingKey = option.convert()
 				buffer := new(bytes.Buffer)
 				err = tmpl.Execute(buffer, tc.data)
 
@@ -334,11 +338,11 @@ func TestErrorHandling(t *testing.T) {
 
 				switch expected := result.(type) {
 				case error:
-					assert.EqualError(t, err, expected.Error())
-					assert.Equal(t, "", buffer.String())
+					assert.EqualError(t, err, expected.Error(), "%s\nExpecting: %v", tc.input, expected)
+					assert.Equal(t, "", buffer.String(), tc.input)
 				case string:
-					assert.NoError(t, err)
-					assert.Equal(t, expected, buffer.String())
+					assert.NoError(t, err, tc.input)
+					assert.Equal(t, expected, buffer.String(), tc.input)
 				default:
 					assert.Failf(t, "Unexpected", "result type %T", expected)
 				}

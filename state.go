@@ -13,9 +13,14 @@ type StackCall struct {
 	Function reflect.Type
 }
 
-func (s *state) recover(f func(error) error) {
-	var err = asError(recover())
-	switch err := f(err).(type) {
+func (s *state) recover(f func(error) error) { s.recovered(recover(), f) }
+
+func (s *state) recovered(rec interface{}, f func(error) error) {
+	var err = asError(rec)
+	if f != nil {
+		err = f(err)
+	}
+	switch err := err.(type) {
 	case nil:
 	case ExecError:
 		panic(err)
@@ -25,7 +30,7 @@ func (s *state) recover(f func(error) error) {
 }
 
 func (s *state) newContext(source ContextSource, err error, name string, node parse.Node, args []parse.Node,
-	fun, dot, final, receiver reflect.Value, result *reflect.Value) context {
+	fun, dot, final, receiver reflect.Value, result *reflect.Value) *Context {
 	return &Context{
 		source:   source,
 		state:    s,
@@ -52,8 +57,11 @@ func (s *state) result(source ContextSource, err error, name string, node parse.
 func (s *state) invokeWithContext(name string, node parse.Node, args []parse.Node,
 	fun, dot, final, receiver reflect.Value, result *reflect.Value) {
 	context := s.newContext(CallContext, nil, name, node, args, fun, dot, final, receiver, result)
-	defer s.recover(func(err error) error { return context.Error() })
-	*result = reflect.ValueOf(context.callInternal(nil, true))
+	defer s.recover(nil)
+	*result = reflect.ValueOf(context.Call(nil))
+	if err := context.Error(); err != nil {
+		panic(err)
+	}
 }
 
 func (s *state) format(source ContextSource, node parse.Node, iface interface{}) interface{} {

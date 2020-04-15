@@ -6,12 +6,14 @@ import "strings"
 type MissingAction uint8
 
 const (
-	// Invalid is used to return invalid reflect.Value when undefined.
-	Invalid MissingAction = 1 << iota
+	// Default is used to return invalid reflect.Value when undefined.
+	Default MissingAction = 1 << iota
 	// ZeroValue indicates to return the zero value for the map element when undefined.
 	ZeroValue
 	// Error indicates that missing elements should be considered as error.
 	Error
+	// Invalid defaults to Default
+	Invalid = Default
 )
 
 func (a MissingAction) String() string {
@@ -19,8 +21,8 @@ func (a MissingAction) String() string {
 	if a == 0 {
 		return "None"
 	}
-	if a&Invalid != 0 {
-		result = append(result, "Invalid")
+	if a&Default != 0 {
+		result = append(result, "Default")
 	}
 	if a&ZeroValue != 0 {
 		result = append(result, "ZeroValue")
@@ -35,7 +37,7 @@ func (a MissingAction) String() string {
 }
 
 // IsSet check whether or not the action has the specified value set.
-func (a MissingAction) IsSet(value MissingAction) bool { return a|value != 0 }
+func (a MissingAction) IsSet(value MissingAction) bool { return a&value != 0 }
 
 func (a MissingAction) convert() missingKeyAction {
 	if a < Invalid || a > Error {

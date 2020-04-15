@@ -73,7 +73,7 @@ func (em *ErrorManager) OnKinds(kinds ...reflect.Kind) *ErrorManager {
 
 // CanManage returns true if the error manager can handle the kind of error.
 func (em *ErrorManager) CanManage(context *Context) bool {
-	if em.source != 0 && context.Source()&em.source == 0 || em.mode != 0 && context.Mode()&em.mode == 0 {
+	if em.source != 0 && !em.source.IsSet(context.source) || em.mode != 0 && !em.mode.IsSet(context.Template().MissingMode()) {
 		return false
 	}
 	if len(em.members) > 0 {

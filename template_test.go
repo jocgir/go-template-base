@@ -52,7 +52,7 @@ func ExampleTemplate_GetFuncs() {
 	// world
 }
 
-func ExampleTemplate_ExtraFuncs_methods() {
+func ExampleTemplate_Option_methods() {
 	// Let's say we have the following object as context:
 	//   type MyObject struct{}
 	//   func (o *MyObject) NoReturn()         {}
@@ -80,7 +80,7 @@ func ExampleTemplate_ExtraFuncs_methods() {
 				// Calling ExtraFuncs with or without custom functions registers
 				// special functions/methods error handling and also add trap and eval
 				// functions.
-				t.ExtraFuncs(nil)
+				t.Option(template.NonStandardResults, template.Trap)
 			}
 			tt := template.Must(t.Parse(code))
 			if err := tt.Execute(buffer, new(MyObject)); err == nil {
@@ -127,7 +127,7 @@ func ExampleTemplate_ExtraFuncs_functions() {
 		test = func(name, code string, fun interface{}) {
 			var (
 				buffer = new(bytes.Buffer)
-				t      = template.New("test")
+				t      = template.New("test").Option(template.Trap)
 				funcs  = template.FuncMap{name: fun}
 				result string
 			)
@@ -160,7 +160,7 @@ func ExampleTemplate_ExtraFuncs_functions() {
 		test("empty", `{{empty}}`, func() {})
 		test("tuple", `{{tuple}}`, func() (int, int) { return 1, 2 })
 		test("error", `{{error}}`, func() error { return fmt.Errorf("bang") })
-		test("trapped", `{{trap trapped}}`, func() error { return fmt.Errorf("boom") })
+		test("trapped", `{{trap trapped}}`, func() (string, error) { panic("boom") })
 	}
 
 	// Output:
@@ -168,7 +168,7 @@ func ExampleTemplate_ExtraFuncs_functions() {
 	//   {{empty}} = "can't install method/function \"empty\" with 0 results"
 	//   {{tuple}} = "can't install method/function \"tuple\" with 2 results"
 	//   {{error}} = "can't install method/function \"error\" with only error as result"
-	//   {{trap trapped}} = "can't install method/function \"trapped\" with only error as result"
+	//   {{trap trapped}} = "boom"
 	//
 	// With ExtraFuncs:
 	//   {{empty}} = ""
@@ -365,4 +365,104 @@ func ExampleTemplate_Funcs_context() {
 	// {{ sum 1.2 3.4 }} = "4.6"
 	// {{ sum "a" "b" "c" "d" }} = "abcd"
 	// {{ "suffix" | sum "prefix" 0 1 }} = "prefix0 1suffix"
+}
+
+func ExampleTemplate_Option_functions_as_methods() {
+	var (
+		t = template.New("test")
+
+		// Remove all strings representation of arguments from the first argument
+		remove = func(context *template.Context) interface{} {
+			var (
+				args   = context.EvalArgs()
+				result = fmt.Sprint(args[0])
+			)
+			for _, substr := range args[1:] {
+				result = strings.ReplaceAll(result, fmt.Sprint(substr), "")
+			}
+			return result
+		}
+
+		substract = func(context *template.Context) interface{} {
+			var (
+				value float64
+				args  = context.EvalArgs()
+			)
+			for i, arg := range args {
+				v, err := strconv.ParseFloat(fmt.Sprint(arg), 64)
+				if err != nil {
+					// If one onf the value is not numeric, we consider delegate the
+					// processing to the remove function
+					return context.Call("remove")
+				}
+				if i > 0 {
+					v = -v
+				}
+				value += v
+			}
+			return value
+		}
+
+		test = func(code string) {
+			var (
+				buffer = new(bytes.Buffer)
+				result string
+			)
+
+			if err := template.Must(t.Parse(code)).Execute(buffer, nil); err == nil {
+				result = buffer.String()
+			} else {
+				result = err.Error()
+			}
+			fmt.Printf("  %s = %q\n", code, result)
+		}
+	)
+
+	// There is no need to call ExtraFuncs when the custom function already handle *template.Context
+	t.Funcs(template.FuncMap{
+		"remove":    remove,
+		"substract": substract,
+	}).Option(template.FunctionsAsMethods)
+
+	t.Option()
+	for _, mode := range []string{"registered", "unregistered"} {
+		fmt.Println("\nMethods as Functions is", mode)
+		if mode == "unregistered" {
+			// We deregister the error manager that handle the method as function mechanism
+			t.ErrorManagers(template.FuncsAsMethodsID)
+		}
+
+		test(`{{ (2).substract 3 }}`)
+		test(`{{ (2.0).substract 3.0 }}`)
+		test(`{{ (5).substract }}`)
+		test(`{{ (1).substract 2 3 }}`)
+		test(`{{ (1.2).substract 3.4 }}`)
+		test(`{{ ((1.2).substract 3.4).substract 5.6 }}`)
+		test(`{{ ("Hello").substract "a" "e" "i" "o" "u" }}`)
+		test(`{{ "!" | ("Hello World!").substract "ll" }}`)
+		test(`Not working: {{ (2).add 3 }}`)
+	}
+
+	// Output:
+	// Methods as Functions is registered
+	//   {{ (2).substract 3 }} = "-1"
+	//   {{ (2.0).substract 3.0 }} = "-1"
+	//   {{ (5).substract }} = "5"
+	//   {{ (1).substract 2 3 }} = "-4"
+	//   {{ (1.2).substract 3.4 }} = "-2.2"
+	//   {{ ((1.2).substract 3.4).substract 5.6 }} = "-7.8"
+	//   {{ ("Hello").substract "a" "e" "i" "o" "u" }} = "Hll"
+	//   {{ "!" | ("Hello World!").substract "ll" }} = "Heo World"
+	//   Not working: {{ (2).add 3 }} = "template: test:1:17: executing \"test\" at <2>: can't evaluate field add in type int"
+	//
+	// Methods as Functions is unregistered
+	//   {{ (2).substract 3 }} = "template: test:1:4: executing \"test\" at <2>: can't evaluate field substract in type int"
+	//   {{ (2.0).substract 3.0 }} = "template: test:1:4: executing \"test\" at <2.0>: can't evaluate field substract in type float64"
+	//   {{ (5).substract }} = "template: test:1:4: executing \"test\" at <5>: can't evaluate field substract in type int"
+	//   {{ (1).substract 2 3 }} = "template: test:1:4: executing \"test\" at <1>: can't evaluate field substract in type int"
+	//   {{ (1.2).substract 3.4 }} = "template: test:1:4: executing \"test\" at <1.2>: can't evaluate field substract in type float64"
+	//   {{ ((1.2).substract 3.4).substract 5.6 }} = "template: test:1:5: executing \"test\" at <1.2>: can't evaluate field substract in type float64"
+	//   {{ ("Hello").substract "a" "e" "i" "o" "u" }} = "template: test:1:4: executing \"test\" at <\"Hello\">: can't evaluate field substract in type string"
+	//   {{ "!" | ("Hello World!").substract "ll" }} = "template: test:1:10: executing \"test\" at <\"Hello World!\">: can't evaluate field substract in type string"
+	//   Not working: {{ (2).add 3 }} = "template: test:1:17: executing \"test\" at <2>: can't evaluate field add in type int"
 }

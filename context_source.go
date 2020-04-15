@@ -39,4 +39,4 @@ func (s ContextSource) String() string {
 }
 
 // IsSet check whether or not the source has the specified value set.
-func (s ContextSource) IsSet(value ContextSource) bool { return s|value != 0 }
+func (s ContextSource) IsSet(value ContextSource) bool { return s&value != 0 }
