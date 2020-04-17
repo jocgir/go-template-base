@@ -743,6 +743,9 @@ func (s *state) evalCall(dot, fun reflect.Value, node parse.Node, name string, a
 	// If we have an error that is not nil, stop execution and return that
 	// error to the caller.
 	if err != nil {
+		if s.trapped() {
+			panic(err)
+		}
 		s.at(node)
 		s.errorf("error calling %s: %v", name, err)
 	}

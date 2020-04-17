@@ -293,7 +293,7 @@ func TestErrorHandling(t *testing.T) {
 		// Test trap error function
 		{
 			name:   "Trap error",
-			input:  `{{with trap fail}}Error: {{.}}{{end}}`,
+			input:  `{{with trap fail}}{{else}}Error: {{$error}}{{end}}`,
 			result: `Error: boom!`,
 			funcs:  FuncMap{"fail": func() int { panic("boom!") }},
 		},

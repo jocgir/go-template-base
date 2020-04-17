@@ -97,7 +97,7 @@ func ExampleTemplate_Option_methods() {
 		test(`{{ .NoReturn }}`)
 		test(`{{ .Tuple }}`)
 		test(`{{ .Error }}`)
-		test(`{{ trap .Error }}`)
+		test(`{{ if trap .Error }}OK{{ else }}Error: {{ $error }}{{ end }}`)
 	}
 
 	// Output:
@@ -105,13 +105,13 @@ func ExampleTemplate_Option_methods() {
 	//   {{ .NoReturn }} = "template: test:1:3: executing \"test\" at <.NoReturn>: can't call method/function \"NoReturn\" with 0 results"
 	//   {{ .Tuple }} = "template: test:1:3: executing \"test\" at <.Tuple>: can't call method/function \"Tuple\" with 2 results"
 	//   {{ .Error }} = "template: test:1:3: executing \"test\" at <.Error>: can't call method/function \"Error\" with 1 results"
-	//   {{ trap .Error }} = "template: test:1: function \"trap\" not defined"
+	//   {{ if trap .Error }}OK{{ else }}Error: {{ $error }}{{ end }} = "template: test:1: function \"trap\" not defined"
 	//
 	// With ExtraFuncs:
 	//   {{ .NoReturn }} = ""
 	//   {{ .Tuple }} = "[1 2]"
 	//   {{ .Error }} = "template: test:1:3: executing \"test\" at <.Error>: bang"
-	//   {{ trap .Error }} = "bang"
+	//   {{ if trap .Error }}OK{{ else }}Error: {{ $error }}{{ end }} = "Error: bang"
 }
 
 type MyObject struct{}
@@ -160,7 +160,8 @@ func ExampleTemplate_ExtraFuncs_functions() {
 		test("empty", `{{empty}}`, func() {})
 		test("tuple", `{{tuple}}`, func() (int, int) { return 1, 2 })
 		test("error", `{{error}}`, func() error { return fmt.Errorf("bang") })
-		test("trapped", `{{trap trapped}}`, func() (string, error) { panic("boom") })
+		test("ok", `{{trap ok}}`, func() (string, error) { return "Hello", nil })
+		test("error", `{{trap error}}`, func() (string, error) { panic("Boom!") })
 	}
 
 	// Output:
@@ -168,13 +169,15 @@ func ExampleTemplate_ExtraFuncs_functions() {
 	//   {{empty}} = "can't install method/function \"empty\" with 0 results"
 	//   {{tuple}} = "can't install method/function \"tuple\" with 2 results"
 	//   {{error}} = "can't install method/function \"error\" with only error as result"
-	//   {{trap trapped}} = "boom"
+	//   {{trap ok}} = "Hello"
+	//   {{trap error}} = "<no value>"
 	//
 	// With ExtraFuncs:
 	//   {{empty}} = ""
 	//   {{tuple}} = "[1 2]"
 	//   {{error}} = "template: test:1:2: executing \"test\" at <error>: bang"
-	//   {{trap trapped}} = "boom"
+	//   {{trap ok}} = "Hello"
+	//   {{trap error}} = "<no value>"
 }
 
 func ExampleTemplate_ErrorManagers_format() {
@@ -465,4 +468,49 @@ func ExampleTemplate_Option_functions_as_methods() {
 	//   {{ ("Hello").substract "a" "e" "i" "o" "u" }} = "template: test:1:4: executing \"test\" at <\"Hello\">: can't evaluate field substract in type string"
 	//   {{ "!" | ("Hello World!").substract "ll" }} = "template: test:1:10: executing \"test\" at <\"Hello World!\">: can't evaluate field substract in type string"
 	//   Not working: {{ (2).add 3 }} = "template: test:1:17: executing \"test\" at <2>: can't evaluate field add in type int"
+}
+
+func ExampleTemplate_Option_trap() {
+	test := func(code string) {
+		var (
+			result string
+			buffer = new(bytes.Buffer)
+
+			divide = func(a, b float64) float64 {
+				if b == 0 {
+					panic("Divide by 0")
+				}
+				return a / b
+			}
+
+			t = template.Must(template.New("test").
+				Option(template.Trap).
+				Funcs(template.FuncMap{"div": divide}).
+				Parse(code))
+		)
+
+		if err := t.Execute(buffer, nil); err == nil {
+			result = buffer.String()
+		} else {
+			result = err.Error()
+		}
+		fmt.Printf("%s = %q\n", code, result)
+	}
+
+	test(`{{ div 1 2 }}`)
+	test(`{{ div 2 0 }}`)
+	test(`{{ trap }}`)
+	test(`{{ trap (div 1 2) (div 6 3) }}`)
+	test(`{{ trap (div 1 2) (div 2 0) }} Status: {{$error}}`)
+	test(`{{ with trap (div 9 4) }}{{ . }}{{ else }}Error: {{ $error }}{{ end }}`)
+	test(`{{ with trap (div 3 0) }}{{ . }}{{ else }}Error: {{ $error }}{{ end }}`)
+
+	// Output:
+	// {{ div 1 2 }} = "0.5"
+	// {{ div 2 0 }} = "template: test:1:3: executing \"test\" at <div 2 0>: error calling div: Divide by 0"
+	// {{ trap }} = ""
+	// {{ trap (div 1 2) (div 6 3) }} = "[0.5 2]"
+	// {{ trap (div 1 2) (div 2 0) }} Status: {{$error}} = "<no value> Status: Divide by 0"
+	// {{ with trap (div 9 4) }}{{ . }}{{ else }}Error: {{ $error }}{{ end }} = "2.25"
+	// {{ with trap (div 3 0) }}{{ . }}{{ else }}Error: {{ $error }}{{ end }} = "Error: Divide by 0"
 }

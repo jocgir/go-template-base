@@ -69,6 +69,9 @@ func (c *Context) Receiver() reflect.Value { return c.receiver }
 //   }
 func (c *Context) Recover() { c.state.recovered(recover(), nil) }
 
+// Trapped returns true if the current call errors are being catched by trap function.
+func (c *Context) Trapped() bool { return c.state.trapped() }
+
 // Result returns the current result value that will be returned by the context.
 func (c *Context) Result() *reflect.Value { return c.result }
 

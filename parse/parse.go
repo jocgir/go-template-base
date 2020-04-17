@@ -726,6 +726,9 @@ func (t *Tree) useVar(pos Pos, name string) Node {
 			return v
 		}
 	}
+	if name == "$error" && t.hasFunction("trap") {
+		return v
+	}
 	t.errorf("undefined variable %q", v.Ident[0])
 	return nil
 }

@@ -145,9 +145,10 @@ func (t *Template) setTemplateOption(opt Option) {
 	if opt&Trap != 0 {
 		t.ErrorManagers(CallFailID,
 			NewErrorManager(func(context *Context) (interface{}, ErrorAction) {
-				if context.StackLen() > 1 && context.StackPeek(1).Name == "trap" {
+				if context.Trapped() {
+					err := context.Error()
 					context.ClearError()
-					return context.Match("error"), ResultReplaced
+					return err, ResultReplaced
 				}
 				return nil, NoReplace
 			},
@@ -156,7 +157,25 @@ func (t *Template) setTemplateOption(opt Option) {
 				`(?P<error>.+)`,
 			).OnSources(CallError),
 		).Funcs(FuncMap{
-			"trap": func(result interface{}) interface{} { return result },
+			"trap": func(context *Context) interface{} {
+				defer context.Recover()
+				args := context.EvalArgs()
+				for _, arg := range context.EvalArgs() {
+					switch err := arg.(type) {
+					case error:
+						context.state.push("$error", reflect.ValueOf(err))
+						return nil
+					}
+				}
+				switch len(args) {
+				case 0:
+					return ""
+				case 1:
+					return args[0]
+				default:
+					return args
+				}
+			},
 		})
 	}
 
