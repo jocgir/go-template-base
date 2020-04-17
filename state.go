@@ -22,9 +22,7 @@ func (s *state) recovered(rec interface{}, f func(error) error) {
 	}
 	switch err := err.(type) {
 	case nil:
-	case flowControl:
-		panic(err)
-	case ExecError:
+	case ExecError, flowControl:
 		panic(err)
 	default:
 		s.errorf(err.Error())
@@ -79,7 +77,12 @@ func (s *state) format(source ContextSource, node parse.Node, iface interface{})
 
 func (s *state) hasErrorManagers() bool     { return len(s.tmpl.errorHandlers.managers) > 0 }
 func (s *state) peekStack(n int) *StackCall { return s.stack[len(s.stack)-n-1] }
-func (s *state) trapped() bool              { return len(s.stack) > 1 && s.peekStack(1).Name == "trap" }
+func (s *state) errorHandled(err error) bool {
+	if _, isFlowControl := err.(flowControl); isFlowControl {
+		return true
+	}
+	return len(s.stack) > 1 && s.peekStack(1).Name == "trap"
+}
 
 func (s *state) variables() Map {
 	result := make(Map, len(s.vars)-1)

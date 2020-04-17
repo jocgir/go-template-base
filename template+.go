@@ -1,9 +1,23 @@
 package template
 
 import (
+	"bytes"
 	"reflect"
 	"sort"
 )
+
+// MustExecute parses and execute the provided template code.
+// It panics if any error occur during the parsing or the execution.
+func (t *Template) MustExecute(text string, data interface{}) string {
+	var (
+		b    = new(bytes.Buffer)
+		tmpl = Must(t.Parse(text))
+	)
+	if err := tmpl.Execute(b, data); err != nil {
+		panic(err)
+	}
+	return b.String()
+}
 
 // ErrorManagers allows registration of error handlers to manage errors.
 // An error handler is a packaged error handler function with preset filters for mode and source.

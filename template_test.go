@@ -515,49 +515,132 @@ func ExampleTemplate_Option_trap() {
 	// {{ with trap (div 3 0) }}{{ . }}{{ else }}Error: {{ $error }}{{ end }} = "Error: Divide by 0"
 }
 
-func ExampleTemplate_Option_flow_control() {
-	test := func(flowAction, test, code string) {
-		var (
-			result string
-			buffer = new(bytes.Buffer)
-
-			sequence = func(n int) []int {
-				result := make([]int, n)
-				for i := range result {
-					result[i] = i + 1
-				}
-				return result
-			}
-
-			t = template.Must(template.New("test").
-				Option(template.FlowControl).
-				Funcs(template.FuncMap{"seq": sequence}).
-				Parse(fmt.Sprintf(code, test, flowAction)))
+func ExampleTemplate_Option_flow_control_break() {
+	var (
+		// break quit the current loop
+		code = `
+			{{- range $value := seq 10 -}}
+				{{- if gt $value 5 }}{{ break }}{{- end -}}
+				{{ $value }}
+			{{- end -}}
+			{{- " That's all Folks!" -}}
+			`
+		t = template.New("test").Option(template.FlowControl).Funcs(
+			// sequence is a function that returns list starting with 1 up to n
+			template.FuncMap{"seq": sequence},
 		)
+	)
 
-		if err := t.Execute(buffer, nil); err == nil {
-			result = buffer.String()
-		} else {
-			result = err.Error()
-		}
-		fmt.Println(result)
-	}
-
-	code := `
-		{{- "List with %[2]s on value %[1]s 5: " -}}
-		{{- range $i, $value := seq 10 -}}
-			{{- if $i }}-{{ end -}}
-			{{- if %[1]s $value 5 }}{{ %[2]s }}{{- end -}}
-			{{ $value }}
-		{{- end -}}
-		{{- " That's all Folks!" -}}
-	`
-	test("break", "gt", code)
-	test("continue", "le", code)
-	test("return", "eq", code)
+	fmt.Println(t.MustExecute(code, nil))
 
 	// Output:
-	// List with break on value gt 5: 1-2-3-4-5- That's all Folks!
-	// List with continue on value le 5: -----6-7-8-9-10 That's all Folks!
-	// List with return on value eq 5: 1-2-3-4-
+	// 12345 That's all Folks!
+}
+
+func ExampleTemplate_Option_flow_control_continue() {
+	var (
+		// continue skip the rest of the code block and goes to next element
+		code = `
+			{{- range $value := seq 10 -}}
+				{{- if le $value 5 }}{{ continue }}{{- end -}}
+				{{ $value }}
+			{{- end -}}
+			{{- " That's all Folks!" -}}
+			`
+		t = template.New("test").Option(template.FlowControl).Funcs(
+			// sequence is a function that returns list starting with 1 up to n
+			template.FuncMap{"seq": sequence},
+		)
+	)
+
+	fmt.Println(t.MustExecute(code, nil))
+
+	// Output:
+	// 678910 That's all Folks!
+}
+
+func ExampleTemplate_Option_flow_control_return() {
+	var (
+		// return ends the template processing and returns the result up to now
+		code = `
+			{{- range $value := seq 10 -}}
+				{{- if eq $value 5 }}{{ return }}{{- end -}}
+				{{ $value }}
+			{{- end -}}
+			{{- " That's all Folks!" -}}
+			`
+		t = template.New("test").Option(template.FlowControl).Funcs(
+			// sequence is a function that returns list starting with 1 up to n
+			template.FuncMap{"seq": sequence},
+		)
+	)
+
+	fmt.Println(t.MustExecute(code, nil))
+
+	// Output:
+	// 1234
+}
+
+func ExampleTemplate_Option_flow_control_return_value() {
+	var (
+		// return can also replace the whole content by a value (in this case an array)
+		code = `
+			{{- range $value := seq 10 -}}
+				{{- if eq $value 5 }}{{ return "got" 5 }}{{- end -}}
+				{{ $value }}
+			{{- end -}}
+			{{- " That's all Folks!" -}}
+			`
+		t = template.New("test").Option(template.FlowControl).Funcs(
+			// sequence is a function that returns list starting with 1 up to n
+			template.FuncMap{"seq": sequence},
+		)
+	)
+
+	fmt.Println(t.MustExecute(code, nil))
+
+	// Output:
+	// [got 5]
+}
+
+func ExampleTemplate_Option_flow_control_continue_dict() {
+	var (
+		// return can also replace the whole content by a value (in this case an array)
+		code = `
+			{{- range $key, $value := dict "a" 1 "b" 2 "c" 3 }}
+				{{- if eq $key "b" -}}{{ continue }}{{- end -}}
+				{{- printf "%s = %v\n" $key $value -}}
+			{{ end -}}
+		`
+		t = template.New("test").Option(template.FlowControl).Funcs(template.FuncMap{
+			// sequence is a function that returns list starting with 1 up to n
+			"seq": sequence,
+			// dict built a dictionnary from supplied elements
+			"dict": dict,
+		})
+	)
+
+	fmt.Println(t.MustExecute(code, nil))
+
+	// Output:
+	// a = 1
+	// c = 3
+}
+
+func sequence(n int) []int {
+	result := make([]int, n)
+	for i := range result {
+		result[i] = i + 1
+	}
+	return result
+}
+
+func dict(args ...interface{}) map[string]interface{} {
+	result := make(map[string]interface{})
+	for i := range args {
+		if i%2 != 0 {
+			result[fmt.Sprint(args[i-1])] = args[i]
+		}
+	}
+	return result
 }

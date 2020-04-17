@@ -164,7 +164,9 @@ func errRecover(errp *error) {
 		switch err := e.(type) {
 		case flowControl:
 			if err != fcReturn {
-				panic(fmt.Errorf("Invalid flow control %s", err))
+				*errp = fmt.Errorf("Invalid flow control %s", err)
+			} else {
+				*errp = nil
 			}
 		case runtime.Error:
 			panic(e)
@@ -363,25 +365,11 @@ func (s *state) walkRange(dot reflect.Value, r *parse.RangeNode) {
 			break
 		}
 		for i := 0; i < val.Len(); i++ {
-			switch func() (result flowControl) {
-				defer func() {
-					switch rec := recover().(type) {
-					case nil:
-					case flowControl:
-						result = rec
-					default:
-						panic(rec)
-					}
-				}()
-				oneIteration(reflect.ValueOf(i), val.Index(i))
-				return fcFlow
-			}() {
-			case fcContinue:
+			flow := flow(func() { oneIteration(reflect.ValueOf(i), val.Index(i)) })
+			if flow == fcContinue {
 				continue
-			case fcBreak:
-				i = val.Len()
-			case fcReturn:
-				panic(fcReturn)
+			} else if flow == fcBreak {
+				break
 			}
 		}
 		return
@@ -391,7 +379,12 @@ func (s *state) walkRange(dot reflect.Value, r *parse.RangeNode) {
 		}
 		om := fmtsort.Sort(val)
 		for i, key := range om.Key {
-			oneIteration(key, om.Value[i])
+			flow := flow(func() { oneIteration(key, om.Value[i]) })
+			if flow == fcContinue {
+				continue
+			} else if flow == fcBreak {
+				break
+			}
 		}
 		return
 	case reflect.Chan:
@@ -404,7 +397,12 @@ func (s *state) walkRange(dot reflect.Value, r *parse.RangeNode) {
 			if !ok {
 				break
 			}
-			oneIteration(reflect.ValueOf(i), elem)
+			flow := flow(func() { oneIteration(reflect.ValueOf(i), elem) })
+			if flow == fcContinue {
+				continue
+			} else if flow == fcBreak {
+				break
+			}
 		}
 		if i == 0 {
 			break
@@ -766,7 +764,7 @@ func (s *state) evalCall(dot, fun reflect.Value, node parse.Node, name string, a
 	// If we have an error that is not nil, stop execution and return that
 	// error to the caller.
 	if err != nil {
-		if _, ok := err.(flowControl); ok || s.trapped() {
+		if s.errorHandled(err) {
 			panic(err)
 		}
 		s.at(node)

@@ -117,52 +117,15 @@ const (
 
 func (t *Template) setTemplateOption(opt Option) {
 	if opt&FunctionsAsMethods != 0 {
-		t.ErrorManagers(FuncsAsMethodsID, NewErrorManager(func(context *Context) (result interface{}, action ErrorAction) {
-			defer context.Recover()
-			var invoked bool
-			if result, invoked = context.TryCall(context.Match("function")); invoked {
-				action = ResultReplaced
-			}
-			return
-		}).Filters(`can't evaluate field (?P<function>.*) in type (?P<receiver>.*)`))
+		t.ErrorManagers(FuncsAsMethodsID, functionsAsMethods)
 	}
 
 	if opt&FunctionsWithContext != 0 {
-		t.ErrorManagers(ContextID,
-			NewErrorManager(func(context *Context) (interface{}, ErrorAction) {
-				return context.Call(nil), ResultReplaced
-			},
-				`can't call method/function "(?P<function>.*)" with (?P<result>\d+) result`).
-				OnSources(CallError),
-			NewErrorManager(func(context *Context) (result interface{}, action ErrorAction) {
-				defer context.Recover()
-				if ft := context.fun.Type(); ft.NumIn() > 0 && ft.In(0) == reflect.TypeOf(context) {
-					return context.Call(nil), ResultReplaced
-				}
-				return
-			},
-				`wrong number of args for (?P<function>.*): want (?P<want>\d+) got (?P<got>\d+)`,
-				`can't handle .* for arg of type \*template\.Context`,
-				`wrong type for value; expected \*template.Context; got .*`).
-				OnSources(CallError),
-		)
+		t.ErrorManagers(ContextID, contextManagers...)
 	}
 
 	if opt&Trap != 0 {
-		t.ErrorManagers(CallFailID,
-			NewErrorManager(func(context *Context) (interface{}, ErrorAction) {
-				if context.Trapped() {
-					err := context.Error()
-					context.ClearError()
-					return err, ResultReplaced
-				}
-				return nil, NoReplace
-			},
-				"executing \"(?P<template>.*)\" at <(?P<function>.*)>: error calling .*: (?P<error>.*)",
-				"executing \"(?P<template>.*)\" at <(?P<function>.*)>: (?P<error>.*)",
-				`(?P<error>.+)`,
-			).OnSources(CallError),
-		).Funcs(FuncMap{
+		t.ErrorManagers(CallFailID, callFailManager).Funcs(FuncMap{
 			"trap": func(context *Context) interface{} {
 				defer context.Recover()
 				args := context.EvalArgs()
@@ -173,14 +136,7 @@ func (t *Template) setTemplateOption(opt Option) {
 						return nil
 					}
 				}
-				switch len(args) {
-				case 0:
-					return ""
-				case 1:
-					return args[0]
-				default:
-					return args
-				}
+				return convertResult(args)
 			},
 		})
 	}
@@ -222,7 +178,49 @@ func (t *Template) setTemplateOption(opt Option) {
 		t.Funcs(FuncMap{
 			"break":    func() string { panic(fcBreak) },
 			"continue": func() string { panic(fcContinue) },
-			"return":   func() string { panic(fcReturn) },
+			"return":   flowReturnValues,
 		})
 	}
 }
+
+var (
+	functionsAsMethods = NewErrorManager(func(context *Context) (result interface{}, action ErrorAction) {
+		defer context.Recover()
+		var invoked bool
+		if result, invoked = context.TryCall(context.Match("function")); invoked {
+			action = ResultReplaced
+		}
+		return
+	}).Filters(`can't evaluate field (?P<function>.*) in type (?P<receiver>.*)`)
+
+	contextManagers = ErrorManagers{
+		NewErrorManager(func(context *Context) (interface{}, ErrorAction) {
+			return context.Call(nil), ResultReplaced
+		},
+			`can't call method/function "(?P<function>.*)" with (?P<result>\d+) result`).
+			OnSources(CallError),
+		NewErrorManager(func(context *Context) (result interface{}, action ErrorAction) {
+			defer context.Recover()
+			if ft := context.fun.Type(); ft.NumIn() > 0 && ft.In(0) == reflect.TypeOf(context) {
+				return context.Call(nil), ResultReplaced
+			}
+			return
+		},
+			`wrong number of args for (?P<function>.*): want (?P<want>\d+) got (?P<got>\d+)`,
+			`can't handle .* for arg of type \*template\.Context`,
+			`wrong type for value; expected \*template.Context; got .*`).
+			OnSources(CallError)}
+
+	callFailManager = NewErrorManager(func(context *Context) (interface{}, ErrorAction) {
+		if context.Trapped() {
+			err := context.Error()
+			context.ClearError()
+			return err, ResultReplaced
+		}
+		return nil, NoReplace
+	},
+		"executing \"(?P<template>.*)\" at <(?P<function>.*)>: error calling .*: (?P<error>.*)",
+		"executing \"(?P<template>.*)\" at <(?P<function>.*)>: (?P<error>.*)",
+		`(?P<error>.+)`,
+	).OnSources(CallError)
+)
