@@ -162,6 +162,10 @@ func errRecover(errp *error) {
 	e := recover()
 	if e != nil {
 		switch err := e.(type) {
+		case flowControl:
+			if err != fcReturn {
+				panic(fmt.Errorf("Invalid flow control %s", err))
+			}
 		case runtime.Error:
 			panic(e)
 		case writeError:
@@ -359,7 +363,26 @@ func (s *state) walkRange(dot reflect.Value, r *parse.RangeNode) {
 			break
 		}
 		for i := 0; i < val.Len(); i++ {
-			oneIteration(reflect.ValueOf(i), val.Index(i))
+			switch func() (result flowControl) {
+				defer func() {
+					switch rec := recover().(type) {
+					case nil:
+					case flowControl:
+						result = rec
+					default:
+						panic(rec)
+					}
+				}()
+				oneIteration(reflect.ValueOf(i), val.Index(i))
+				return fcFlow
+			}() {
+			case fcContinue:
+				continue
+			case fcBreak:
+				i = val.Len()
+			case fcReturn:
+				panic(fcReturn)
+			}
 		}
 		return
 	case reflect.Map:
@@ -743,7 +766,7 @@ func (s *state) evalCall(dot, fun reflect.Value, node parse.Node, name string, a
 	// If we have an error that is not nil, stop execution and return that
 	// error to the caller.
 	if err != nil {
-		if s.trapped() {
+		if _, ok := err.(flowControl); ok || s.trapped() {
 			panic(err)
 		}
 		s.at(node)

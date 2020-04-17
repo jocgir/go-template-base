@@ -90,6 +90,12 @@ const (
 	// {{ eval "Hello {{ $value }}" }}
 	Eval
 
+	// FlowControl option enables functions to control the execution flow within the template:
+	//   {{ break }}    is used within range block to quit the loop
+	//   {{ continue }} is used within range block to skip the rest of the block and go to next element
+	//   {{ return }}   is used to quit the current template
+	FlowControl
+
 	// NonStandardResults enables functions and methods to have no return or more than one returned values.
 	// Note that this is simply an alias to FunctionsWithContext and that it is automatically enabled when
 	// registering non standard functions with ExtraFuncs method. However, it is required to activate that
@@ -209,6 +215,14 @@ func (t *Template) setTemplateOption(opt Option) {
 				}
 				return result, nil
 			},
+		})
+	}
+
+	if opt&FlowControl != 0 {
+		t.Funcs(FuncMap{
+			"break":    func() string { panic(fcBreak) },
+			"continue": func() string { panic(fcContinue) },
+			"return":   func() string { panic(fcReturn) },
 		})
 	}
 }

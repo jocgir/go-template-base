@@ -22,6 +22,8 @@ func (s *state) recovered(rec interface{}, f func(error) error) {
 	}
 	switch err := err.(type) {
 	case nil:
+	case flowControl:
+		panic(err)
 	case ExecError:
 		panic(err)
 	default:

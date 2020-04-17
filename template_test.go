@@ -514,3 +514,50 @@ func ExampleTemplate_Option_trap() {
 	// {{ with trap (div 9 4) }}{{ . }}{{ else }}Error: {{ $error }}{{ end }} = "2.25"
 	// {{ with trap (div 3 0) }}{{ . }}{{ else }}Error: {{ $error }}{{ end }} = "Error: Divide by 0"
 }
+
+func ExampleTemplate_Option_flow_control() {
+	test := func(flowAction, test, code string) {
+		var (
+			result string
+			buffer = new(bytes.Buffer)
+
+			sequence = func(n int) []int {
+				result := make([]int, n)
+				for i := range result {
+					result[i] = i + 1
+				}
+				return result
+			}
+
+			t = template.Must(template.New("test").
+				Option(template.FlowControl).
+				Funcs(template.FuncMap{"seq": sequence}).
+				Parse(fmt.Sprintf(code, test, flowAction)))
+		)
+
+		if err := t.Execute(buffer, nil); err == nil {
+			result = buffer.String()
+		} else {
+			result = err.Error()
+		}
+		fmt.Println(result)
+	}
+
+	code := `
+		{{- "List with %[2]s on value %[1]s 5: " -}}
+		{{- range $i, $value := seq 10 -}}
+			{{- if $i }}-{{ end -}}
+			{{- if %[1]s $value 5 }}{{ %[2]s }}{{- end -}}
+			{{ $value }}
+		{{- end -}}
+		{{- " That's all Folks!" -}}
+	`
+	test("break", "gt", code)
+	test("continue", "le", code)
+	test("return", "eq", code)
+
+	// Output:
+	// List with break on value gt 5: 1-2-3-4-5- That's all Folks!
+	// List with continue on value le 5: -----6-7-8-9-10 That's all Folks!
+	// List with return on value eq 5: 1-2-3-4-
+}
