@@ -6,6 +6,28 @@ import (
 	"sort"
 )
 
+// Default values for delimiters.
+const (
+	DefaultLeftDelim  = "{{"
+	DefaultRightDelim = "}}"
+)
+
+// LeftDelim returns the left delimiter.
+func (t *Template) LeftDelim() string {
+	if t.leftDelim == "" {
+		return DefaultLeftDelim
+	}
+	return t.leftDelim
+}
+
+// RightDelim returns the right delimiter.
+func (t *Template) RightDelim() string {
+	if t.rightDelim == "" {
+		return DefaultRightDelim
+	}
+	return t.rightDelim
+}
+
 // MustExecute parses and execute the provided template code.
 // It panics if any error occur during the parsing or the execution.
 func (t *Template) MustExecute(text string, data interface{}) string {

@@ -23,6 +23,7 @@ type common struct {
 	execFuncs  map[string]reflect.Value
 
 	errorHandlers errorHandlers
+	options       Option
 }
 
 // Template is the representation of a parsed template. The *parse.Tree

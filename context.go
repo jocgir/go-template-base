@@ -98,11 +98,22 @@ func (c *Context) Variables() Map { return c.state.variables() }
 
 // ArgCount return the total number of argument supplied to the context including
 // the piped argument if there is.
-func (c *Context) ArgCount() int {
-	if c.PipelineArg() != missingVal {
-		return len(c.args) + 1
+func (c *Context) ArgCount() (result int) {
+	result = len(c.args)
+	if len(c.args) > 0 {
+		fmt.Println(c.args, "receiver =", c.receiver, c.args[0].Type())
+		switch c.args[0].Type() {
+		case parse.NodeChain, parse.NodeField, parse.NodeVariable:
+			result--
+		}
 	}
-	return len(c.args)
+	if c.PipelineArg() != missingVal {
+		result++
+	}
+	if c.Receiver().IsValid() {
+		result++
+	}
+	return
 }
 
 // EvalArgs returns an []interface{} from the supplied arguments.
@@ -160,29 +171,28 @@ func (c *Context) TryCall(function interface{}) (interface{}, bool) {
 		actualFunc = reflect.ValueOf(function)
 	}
 
-	typ := actualFunc.Type()
-	args := make([]reflect.Value, 0, c.ArgCount()+1)
-	first := 0
-	injectSelf := typ.NumIn() > 0 && typ.In(0) == reflect.TypeOf(c)
+	first, typ := 0, actualFunc.Type()
+	argCount, numIn := c.ArgCount(), typ.NumIn()
+	args := make([]reflect.Value, 0, argCount+1)
+	injectSelf := numIn > 0 && typ.In(0) == reflect.TypeOf(c)
 	if injectSelf {
 		first = 1
 		args = append(args, reflect.ValueOf(c))
 	}
-	numIn := typ.NumIn()
 
-	if injectSelf && typ.NumIn() == 1 && !typ.IsVariadic() {
+	if injectSelf && numIn == 1 && !typ.IsVariadic() {
 		return c.convertResult(actualFunc.Call(args)), true
 	}
 
 	if typ.IsVariadic() {
 		numIn--
-	} else if c.ArgCount()+first != typ.NumIn() {
-		c.Errorf("wrong number of args for %s: want %d got %d", c.MemberName(), typ.NumIn()-first, c.ArgCount())
+	} else if argCount+first != numIn {
+		c.Errorf("wrong number of args for %s: want %d got %d", c.MemberName(), numIn-first, argCount)
 		return nil, true
 	}
 
 	var argType reflect.Type
-	for i := 0; i < c.ArgCount(); i++ {
+	for i := 0; i < argCount; i++ {
 		if i+first <= numIn {
 			argType = typ.In(i + first)
 		}
@@ -204,12 +214,15 @@ func (c *Context) TryCall(function interface{}) (interface{}, bool) {
 			} else {
 				arg = c.state.evalArg(c.dot, argType, c.args[i])
 			}
+		} else if i == 0 && c.Receiver().IsValid() {
+			arg = c.Receiver()
 		} else {
 			arg = c.PipelineArg()
 		}
 		args = append(args, arg)
 	}
-	return c.convertResult(actualFunc.Call(args)), true
+	x := c.convertResult(actualFunc.Call(args))
+	return x, true
 }
 
 func (c *Context) convertResult(result []reflect.Value) interface{} {

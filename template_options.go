@@ -4,10 +4,14 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
+	"strings"
 )
 
 // MissingMode returns the missing action mode currently set on template.
 func (t *Template) MissingMode() MissingAction { return t.option.missingKey.convert() }
+
+// Options returns the option values that are enabled.
+func (t *Template) Options() Option { return t.options }
 
 // Option sets options for the template.
 // Options can be designed by strings as in OptionDeprecated or they can
@@ -75,6 +79,17 @@ const (
 	// method instead of the standard Funcs method.
 	FunctionsWithContext
 
+	// PublicFunctions enable recognition of function starting with capital letter even if the original
+	// function only exist with lowercase first letter.
+	//
+	// It is the indented to act as the opposite of the pipeline mechanism which consider the pipeline argument as
+	// the last parameter while Jinja template (Python) consider the piped argument as the first one.
+	//
+	// Ex:
+	//   {{ index $map $key }}   Normal function call
+	//   {{ Index $map $key }}   The capital version is also working
+	PublicFunctions
+
 	// Trap adds the function 'trap' that allows user to catch the return of a failing function call and
 	// and continue the template evaluation.
 	//
@@ -103,21 +118,65 @@ const (
 	NonStandardResults = FunctionsWithContext
 
 	// AllOptions enables all available options.
-	AllOptions = ^Option(0)
+	AllOptions = FlowControl<<2 - 1
 )
+
+// List returns an array with all options available.
+func (o Option) List() []Option {
+	result := make([]Option, 0, reflect.TypeOf(o).Bits())
+	for current := Option(1); current <= Option(AllOptions); current <<= 1 {
+		if o&current != 0 {
+			result = append(result, current)
+		}
+	}
+	return result
+}
+
+func (o Option) String() string {
+	var result []string
+	for _, o := range o.List() {
+		var s string
+		switch o {
+		case FunctionsAsMethods:
+			s = "FunctionsAsMethods"
+		case FunctionsWithContext:
+			s = "FunctionsWithContext"
+		case PublicFunctions:
+			s = "PublicFunctions"
+		case Trap:
+			s = "Trap"
+		case Eval:
+			s = "Eval"
+		case FlowControl:
+			s = "FlowControl"
+		default:
+			s = fmt.Sprint(int(o))
+		}
+		result = append(result, s)
+	}
+	return strings.Join(result, " ")
+}
 
 const (
 	// FuncsAsMethodsID is the ID used to register the FunctionsAsMethods handler.
 	FuncsAsMethodsID = "^0_FuncsAsMethods"
+	// PublicFuncsID is the ID used to register the PublicFunctions handler.
+	PublicFuncsID = "^1_PublicFuncs"
 	// ContextID is the ID used to register the FunctionsWithContext handler.
-	ContextID = "^1_ContextHandlers"
+	ContextID = "^2_ContextHandlers"
 	// CallFailID is the ID used to register the trap handler.
-	CallFailID = "^2_CallFailHandler"
+	CallFailID = "^3_CallFailHandler"
 )
 
 func (t *Template) setTemplateOption(opt Option) {
+	t.options |= opt
+
 	if opt&FunctionsAsMethods != 0 {
 		t.ErrorManagers(FuncsAsMethodsID, functionsAsMethods)
+	}
+
+	if opt&PublicFunctions != 0 {
+		t.ErrorManagers(PublicFuncsID, publicFunctions)
 	}
 
 	if opt&FunctionsWithContext != 0 {
@@ -192,6 +251,17 @@ var (
 		}
 		return
 	}).Filters(`can't evaluate field (?P<function>.*) in type (?P<receiver>.*)`)
+
+	publicFunctions = NewErrorManager(func(context *Context) (result interface{}, action ErrorAction) {
+		defer context.Recover()
+		var invoked bool
+		name := context.Match("function")
+		name = strings.ToLower(name[:1]) + name[1:]
+		if result, invoked = context.TryCall(name); invoked {
+			action = ResultReplaced
+		}
+		return
+	}).Filters(`can't evaluate field (?P<function>[[:upper:]]\w*) in type .*`)
 
 	contextManagers = ErrorManagers{
 		NewErrorManager(func(context *Context) (interface{}, ErrorAction) {
